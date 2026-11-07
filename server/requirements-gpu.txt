@@ -1,0 +1,4 @@
+# CUDA runtime libraries for faster-whisper (CTranslate2) on Windows.
+# Install only on machines with an NVIDIA GPU:  pip install -r requirements-gpu.txt
+nvidia-cublas-cu12
+nvidia-cudnn-cu12>=9,<10

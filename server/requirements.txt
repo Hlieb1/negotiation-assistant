@@ -1,0 +1,38 @@
+# Core server
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2.7
+pyyaml>=6.0
+httpx>=0.27            # Ollama HTTP API client
+websockets>=12.0       # test client (tools/fake_client.py)
+
+# Numerics / ML
+numpy>=1.26
+scipy>=1.11
+scikit-learn>=1.4
+joblib>=1.3
+pandas>=2.1
+matplotlib>=3.8
+
+# Video: face emotion
+opencv-python>=4.9
+deepface>=0.0.93
+tensorflow>=2.16,<2.21  # CPU build on native Windows (DeepFace emotion model is small)
+tf-keras>=2.16          # required by DeepFace with TF >= 2.16
+
+# Audio
+librosa>=0.10.2
+soundfile>=0.12
+webrtcvad-wheels>=2.0.14  # prebuilt webrtcvad for Windows
+noisereduce>=3.0
+sounddevice>=0.4.6        # microphone capture in the test client
+
+# Speech recognition (GPU via CTranslate2, see requirements-gpu.txt)
+faster-whisper>=1.1
+
+# Decision module A
+scikit-fuzzy>=0.5
+networkx>=3.0             # scikit-fuzzy dependency
+
+# Tests
+pytest>=8.0

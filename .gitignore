@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+
+# Data and artifacts (large / private)
+server/data/
+server/models/*.joblib
+server/models/*.pkl
+server/models/*.h5
+server/logs/
+server/recordings/
+server/evaluation/results/
+
+# Android
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+*.apk
+
+# IDE / OS
+.idea/
+.vscode/
+Thumbs.db
