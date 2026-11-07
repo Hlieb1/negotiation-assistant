@@ -37,6 +37,29 @@ class VideoSettings(BaseModel):
     min_face_ratio: float = 0.3
 
 
+class AudioSettings(BaseModel):
+    enabled: bool = True
+    denoise: bool = True
+    vad_aggressiveness: int = 2
+    vad_frame_ms: int = 30
+    min_rms_db: float = -45.0
+    voice_model: str = "emotion2vec/emotion2vec_plus_large"
+    voice_device: str = "cuda:0"
+    min_speech_s: float = 0.5
+    smoothing_window_s: float = 6.0
+
+
+class AsrSettings(BaseModel):
+    enabled: bool = True
+    model: str = "small"
+    language: str = "uk"
+    device: str = "cuda"
+    compute_type: str = "float16"
+    beam_size: int = 1
+    min_pause_s: float = 0.6
+    max_utterance_s: float = 10.0
+
+
 class StorageSettings(BaseModel):
     log_dir: Path = Path("logs")
     record_media: bool = False
@@ -47,6 +70,8 @@ class Settings(BaseModel):
     server: ServerSettings = ServerSettings()
     session: SessionSettings = SessionSettings()
     video: VideoSettings = VideoSettings()
+    audio: AudioSettings = AudioSettings()
+    asr: AsrSettings = AsrSettings()
     storage: StorageSettings = StorageSettings()
 
 

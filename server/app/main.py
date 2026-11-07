@@ -23,7 +23,7 @@ def create_app(settings: Settings | None = None, models: Models | None = None) -
             app.state.models = await asyncio.to_thread(load_models, settings)
             logger.info("models ready")
         yield
-        app.state.models.executor.shutdown(wait=False, cancel_futures=True)
+        app.state.models.shutdown()
 
     app = FastAPI(title="Negotiation assistant", lifespan=lifespan)
     app.state.models = models

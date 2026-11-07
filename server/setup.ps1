@@ -4,6 +4,7 @@ Set-Location $PSScriptRoot
 if (-not (Test-Path .venv)) { py -3.12 -m venv .venv }
 $python = ".\.venv\Scripts\python.exe"
 & $python -m pip install --upgrade pip
+& $python -m pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu128
 & $python -m pip install -r requirements.txt
 & $python -m pip install -r requirements-gpu.txt
 

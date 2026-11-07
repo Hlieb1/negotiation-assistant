@@ -19,6 +19,27 @@ video:
   smoothing_window_s: 1.5
   min_face_ratio: 0.3        # share of frames with a face in the window, below it the face is "not found"
 
+audio:
+  enabled: true
+  denoise: true              # spectral gating (noisereduce) before VAD
+  vad_aggressiveness: 2      # webrtcvad 0..3
+  vad_frame_ms: 30
+  min_rms_db: -45            # frames quieter than this are never speech
+  voice_model: emotion2vec/emotion2vec_plus_large   # or emotion2vec/emotion2vec_plus_base
+  voice_device: cuda:0
+  min_speech_s: 0.5          # shorter speech in a chunk is not classified
+  smoothing_window_s: 6.0
+
+asr:
+  enabled: true
+  model: small               # small | medium | large-v3
+  language: uk
+  device: cuda
+  compute_type: float16
+  beam_size: 1
+  min_pause_s: 0.6           # pause that ends an utterance
+  max_utterance_s: 10.0
+
 storage:
   log_dir: logs
   record_media: false

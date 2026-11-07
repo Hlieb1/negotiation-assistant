@@ -31,6 +31,10 @@ sounddevice>=0.4.6        # microphone capture in the test client
 # Speech recognition (GPU via CTranslate2, see requirements-gpu.txt)
 faster-whisper>=1.1
 
+# Voice emotion: emotion2vec+ via FunASR; torch/torchaudio cu128 are installed first by setup.ps1
+funasr>=1.2
+huggingface_hub>=0.24
+
 # Decision module A
 scikit-fuzzy>=0.5
 networkx>=3.0             # scikit-fuzzy dependency

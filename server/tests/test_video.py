@@ -38,7 +38,7 @@ def test_prepare_frame_downscales_keeping_aspect():
 
 
 def test_smoother_averages_within_window():
-    smoother = EmotionSmoother(window_s=1.0, min_face_ratio=0.3)
+    smoother = EmotionSmoother(window_s=1.0, min_found_ratio=0.3)
     smoother.add(FaceResult(ts=0, probs=one_hot("angry")))
     smoother.add(FaceResult(ts=500, probs=one_hot("happy")))
     smoother.add(FaceResult(ts=900, probs=one_hot("happy")))
@@ -50,7 +50,7 @@ def test_smoother_averages_within_window():
 
 
 def test_smoother_reports_missing_face():
-    smoother = EmotionSmoother(window_s=1.0, min_face_ratio=0.5)
+    smoother = EmotionSmoother(window_s=1.0, min_found_ratio=0.5)
     assert smoother.current() is None
     smoother.add(FaceResult(ts=0, probs=one_hot("sad")))
     for ts in (200, 400, 600):
@@ -59,7 +59,7 @@ def test_smoother_reports_missing_face():
     smoother.add(FaceResult(ts=800, probs=one_hot("sad")))
     assert smoother.current() is None
     smoother.add(FaceResult(ts=1000, probs=one_hot("sad")))
-    assert smoother.current().face_ratio == 0.5
+    assert smoother.current().found_ratio == 0.5
 
 
 def test_hsemotion_eight_classes_map_to_seven():
