@@ -1,0 +1,12 @@
+server:
+  host: 0.0.0.0
+  port: 8000
+
+session:
+  default_mode: fuzzy
+  hint_min_interval_s: 4.0
+
+storage:
+  log_dir: logs
+  record_media: false
+  recordings_dir: recordings
