@@ -8,7 +8,7 @@ import numpy as np
 from pydantic import BaseModel
 
 from .config import Settings, resolve_path
-from .pipeline import Pipeline
+from .pipeline import Models, Pipeline
 from .protocol import AudioChunk, Error, Mode, SessionControl, Status, VideoFrame, now_ms
 from .session_log import MediaRecorder, SessionLog
 
@@ -29,8 +29,9 @@ def decode_pcm16(data: bytes) -> np.ndarray:
 
 
 class Session:
-    def __init__(self, settings: Settings, send: Callable[[str], Awaitable[None]]):
+    def __init__(self, settings: Settings, models: Models, send: Callable[[str], Awaitable[None]]):
         self.settings = settings
+        self.models = models
         self._send_text = send
         self.session_id: str | None = None
         self.mode: Mode = settings.session.default_mode
@@ -75,9 +76,10 @@ class Session:
         storage = self.settings.storage
         self.session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.mode = mode
-        self.pipeline = Pipeline(mode, self.settings.session.hint_min_interval_s)
         self.log = SessionLog(resolve_path(storage.log_dir), self.session_id)
         self.log.write("session_start", mode=mode, config=self.settings.model_dump(mode="json"))
+        self.pipeline = Pipeline(mode, self.settings, self.models, self.log.write)
+        self.pipeline.start()
         if storage.record_media:
             self.recorder = MediaRecorder(resolve_path(storage.recordings_dir) / self.session_id)
         self._hint_task = asyncio.create_task(self._hint_loop())
@@ -91,7 +93,9 @@ class Session:
             await self._hint_task
         except asyncio.CancelledError:
             pass
-        self.log.write("session_stop", frames=self.pipeline.frames, audio_seconds=round(self.pipeline.audio_seconds, 2))
+        await self.pipeline.stop()
+        self.log.write("session_stop", frames=self.pipeline.frames, frames_analyzed=self.pipeline.frames_analyzed,
+                       audio_seconds=round(self.pipeline.audio_seconds, 2))
         self.log.close()
         if self.recorder:
             self.recorder.close()

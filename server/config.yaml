@@ -6,6 +6,17 @@ session:
   default_mode: fuzzy
   hint_min_interval_s: 4.0
 
+video:
+  enabled: true
+  detector_backend: opencv   # opencv (fast) | retinaface (accurate, slower) | yunet | mtcnn
+  align: true
+  max_fps: 4
+  max_width: 640
+  equalize: false            # CLAHE on luminance for poor lighting
+  min_face_size: 40
+  smoothing_window_s: 1.5
+  min_face_ratio: 0.3        # share of frames with a face in the window, below it the face is "not found"
+
 storage:
   log_dir: logs
   record_media: false

@@ -15,7 +15,7 @@ pandas>=2.1
 matplotlib>=3.8
 
 # Video: face emotion
-opencv-python>=4.9
+opencv-contrib-python==5.0.0.93
 deepface>=0.0.93
 tensorflow>=2.16,<2.21  # CPU build on native Windows (DeepFace emotion model is small)
 tf-keras>=2.16          # required by DeepFace with TF >= 2.16

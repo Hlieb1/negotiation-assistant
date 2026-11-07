@@ -1,5 +1,6 @@
 import base64
 import json
+from concurrent.futures import ThreadPoolExecutor
 
 import cv2
 import numpy as np
@@ -7,6 +8,15 @@ from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.main import create_app
+from app.pipeline import Models
+from app.video.face_emotion import EMOTIONS, FaceResult
+
+
+class FakeRecognizer:
+    def analyze(self, frame, ts):
+        probs = np.zeros(len(EMOTIONS))
+        probs[EMOTIONS.index("happy")] = 1.0
+        return FaceResult(ts=ts, probs=probs, box=(0, 0, 100, 100))
 
 
 def make_client(tmp_path) -> TestClient:
@@ -15,7 +25,8 @@ def make_client(tmp_path) -> TestClient:
         "storage": {"log_dir": str(tmp_path / "logs"), "record_media": True,
                     "recordings_dir": str(tmp_path / "rec")},
     })
-    return TestClient(create_app(settings))
+    models = Models(face=FakeRecognizer(), executor=ThreadPoolExecutor(max_workers=1))
+    return TestClient(create_app(settings, models))
 
 
 def jpeg_b64() -> str:
@@ -30,10 +41,13 @@ def test_session_round_trip(tmp_path):
         assert status["session"] == "started" and status["mode"] == "llm"
 
         ws.send_text(json.dumps({"type": "video_frame", "ts": 1, "jpeg_b64": jpeg_b64()}))
-        pcm = base64.b64encode(np.zeros(32000, dtype="<i2").tobytes()).decode()
-        ws.send_text(json.dumps({"type": "audio_chunk", "ts": 2, "pcm16_b64": pcm}))
         hint = ws.receive_json()
         assert hint["type"] == "hint" and hint["mode"] == "llm" and hint["latency_ms"] >= 0
+        assert hint["state"] == "радість" and hint["confidence"] == 1.0
+
+        pcm = base64.b64encode(np.zeros(32000, dtype="<i2").tobytes()).decode()
+        ws.send_text(json.dumps({"type": "audio_chunk", "ts": 2, "pcm16_b64": pcm}))
+        assert ws.receive_json()["type"] == "hint"
 
         ws.send_text(json.dumps({"type": "session", "action": "stop"}))
         assert ws.receive_json()["session"] == "stopped"

@@ -23,6 +23,18 @@ class SessionSettings(BaseModel):
     hint_min_interval_s: float = 4.0
 
 
+class VideoSettings(BaseModel):
+    enabled: bool = True
+    detector_backend: str = "opencv"
+    align: bool = True
+    max_fps: float = 4.0
+    max_width: int = 640
+    equalize: bool = False
+    min_face_size: int = 40
+    smoothing_window_s: float = 1.5
+    min_face_ratio: float = 0.3
+
+
 class StorageSettings(BaseModel):
     log_dir: Path = Path("logs")
     record_media: bool = False
@@ -32,6 +44,7 @@ class StorageSettings(BaseModel):
 class Settings(BaseModel):
     server: ServerSettings = ServerSettings()
     session: SessionSettings = SessionSettings()
+    video: VideoSettings = VideoSettings()
     storage: StorageSettings = StorageSettings()
 
 
