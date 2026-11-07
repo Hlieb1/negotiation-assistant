@@ -8,8 +8,10 @@ session:
 
 video:
   enabled: true
-  detector_backend: opencv   # opencv (fast) | retinaface (accurate, slower) | yunet | mtcnn
-  align: true
+  detector_backend: opencv   # opencv | yunet (fast) | retinaface (too slow on CPU)
+  classifier: hsemotion      # hsemotion | deepface
+  hsemotion_model: enet_b2_7 # enet_b2_7 | enet_b0_8_best_afew | enet_b0_8_best_vgaf
+  face_margin: 0.1           # crop margin around the detected face, share of its width
   max_fps: 4
   max_width: 640
   equalize: false            # CLAHE on luminance for poor lighting

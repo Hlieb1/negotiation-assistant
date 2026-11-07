@@ -7,7 +7,7 @@ $python = ".\.venv\Scripts\python.exe"
 & $python -m pip install -r requirements.txt
 & $python -m pip install -r requirements-gpu.txt
 
-# deepface pulls the headless OpenCV build, which has no GUI and shadows the full one
+# deepface and hsemotion-onnx pull other OpenCV builds that shadow the contrib one (no GUI, no CascadeClassifier)
 & $python -m pip uninstall -y opencv-contrib-python-headless opencv-python opencv-contrib-python
 & $python -m pip install --no-deps opencv-contrib-python==5.0.0.93
 

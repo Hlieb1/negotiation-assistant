@@ -23,7 +23,8 @@ def load_models(settings: Settings) -> Models:
     face = None
     if settings.video.enabled:
         video = settings.video
-        face = FaceEmotionRecognizer(video.detector_backend, video.align, video.min_face_size)
+        face = FaceEmotionRecognizer(video.detector_backend, video.classifier, video.hsemotion_model,
+                                     video.min_face_size, video.face_margin)
         executor.submit(face.warm_up).result()
     return Models(face=face, executor=executor)
 

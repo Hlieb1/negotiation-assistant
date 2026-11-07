@@ -26,7 +26,9 @@ class SessionSettings(BaseModel):
 class VideoSettings(BaseModel):
     enabled: bool = True
     detector_backend: str = "opencv"
-    align: bool = True
+    classifier: str = "hsemotion"
+    hsemotion_model: str = "enet_b2_7"
+    face_margin: float = 0.1
     max_fps: float = 4.0
     max_width: int = 640
     equalize: bool = False

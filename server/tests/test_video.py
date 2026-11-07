@@ -1,6 +1,7 @@
 import numpy as np
+import pytest
 
-from app.video.face_emotion import EMOTIONS, FaceResult
+from app.video.face_emotion import EMOTIONS, FaceResult, to_emotion_vector
 from app.video.preprocessing import FrameSampler, prepare_frame
 from app.video.smoothing import EmotionSmoother
 
@@ -59,3 +60,12 @@ def test_smoother_reports_missing_face():
     assert smoother.current() is None
     smoother.add(FaceResult(ts=1000, probs=one_hot("sad")))
     assert smoother.current().face_ratio == 0.5
+
+
+def test_hsemotion_eight_classes_map_to_seven():
+    labels = {0: "Anger", 1: "Contempt", 2: "Disgust", 3: "Fear", 4: "Happiness", 5: "Neutral", 6: "Sadness",
+              7: "Surprise"}
+    probs = to_emotion_vector(labels, np.array([0.1, 0.2, 0.1, 0.0, 0.3, 0.2, 0.1, 0.0]))
+    assert probs[EMOTIONS.index("disgust")] == pytest.approx(0.3)
+    assert probs[EMOTIONS.index("happy")] == pytest.approx(0.3)
+    assert probs.sum() == pytest.approx(1.0)
