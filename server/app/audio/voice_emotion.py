@@ -1,3 +1,5 @@
+import contextlib
+import io
 import logging
 import time
 from dataclasses import dataclass
@@ -48,7 +50,9 @@ class VoiceEmotionClassifier:
         level = root.level
         root.setLevel(logging.WARNING)
         try:
-            self._model = AutoModel(model=model, hub="hf", device=device, disable_update=True, log_level="ERROR")
+            with contextlib.redirect_stdout(io.StringIO()):
+                self._model = AutoModel(model=model, hub="hf", device=device, disable_update=True,
+                                        log_level="ERROR")
         finally:
             root.setLevel(level)
         self.min_speech_s = min_speech_s

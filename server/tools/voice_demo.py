@@ -25,12 +25,12 @@ PHRASES = [
     "Ви пропонуєте саме таку ціну?",
 ]
 SCENARIO = [
-    ("neutral", "спокійно, нейтрально"),
-    ("happy", "радісно, задоволено"),
-    ("angry", "зі злістю, роздратовано"),
-    ("sad", "сумно, розчаровано"),
-    ("fear", "з тривогою, невпевнено"),
-    ("surprise", "здивовано"),
+    ("neutral", "рівно і спокійно, як звичайне ділове речення"),
+    ("happy", "з посмішкою, задоволено, ніби почули гарну новину"),
+    ("angry", "роздратовано, з натиском, трохи голосніше і різкіше"),
+    ("sad", "розчаровано, тихіше і повільніше, ніби угода зривається"),
+    ("fear", "тривожно і невпевнено, з запинками, ніби боїтеся відмови"),
+    ("surprise", "здивовано, з підйомом тону, ніби не очікували такого"),
 ]
 
 
@@ -64,14 +64,21 @@ def run_scenario(detector, classifier, asr, record_s: float, rounds: int) -> Non
     out_dir = SERVER_DIR / "recordings" / f"voice_demo_{datetime.now():%Y%m%d_%H%M%S}"
     out_dir.mkdir(parents=True)
     rows = []
-    print(f"Запис у {out_dir}\nКожну фразу вимовляйте після слова «Говоріть!», на запис {record_s:.0f} с.")
+    total = rounds * len(SCENARIO)
+    print(f"Запис у {out_dir}\nКожну фразу вимовляйте після слова «ГОВОРІТЬ!», на запис {record_s:.0f} с.")
     for round_index in range(rounds):
         phrase = PHRASES[round_index % len(PHRASES)]
         for expected, manner in SCENARIO:
-            input(f"\nСкажіть {manner}: «{phrase}»  — натисніть Enter, коли будете готові...")
-            print("Говоріть!")
+            print("\n" + "=" * 70)
+            print(f"  {len(rows) + 1}/{total}   ЕМОЦІЯ:  {EMOTIONS_UK[expected].upper()}")
+            print(f"  Як говорити: {manner}")
+            print(f"  Фраза: «{phrase}»")
+            print("=" * 70)
+            input("Натисніть Enter, коли будете готові...")
+            print(">>> ГОВОРІТЬ!  <<<")
             audio = sd.rec(int(record_s * SAMPLE_RATE), samplerate=SAMPLE_RATE, channels=1, dtype="float32")
             sd.wait()
+            print("Стоп, запис завершено.")
             audio = audio[:, 0]
             name = f"{len(rows):02d}_{expected}.wav"
             sf.write(out_dir / name, audio, SAMPLE_RATE, subtype="PCM_16")
