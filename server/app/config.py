@@ -65,10 +65,11 @@ class SpeakerSettings(BaseModel):
 
 class AsrSettings(BaseModel):
     enabled: bool = True
-    model: str = "small"
+    model: str = "large-v3-turbo"
     language: str = "uk"
     device: str = "cuda"
-    compute_type: str = "float16"
+    compute_type: str = "int8_float16"
+    context_prompt_chars: int = 200
     beam_size: int = 1
     min_pause_s: float = 0.6
     max_utterance_s: float = 10.0
@@ -91,7 +92,7 @@ class LLMSettings(BaseModel):
     model: str = "qwen3:8b"
     prompt_path: Path = Path("app/decision/llm_prompt_uk.json")
     timeout_s: float = 4.5
-    temperature: float = 0.6
+    temperature: float = 0.3
     max_tokens: int = 100
     keep_alive: str = "60m"
 
@@ -104,6 +105,7 @@ class DecisionSettings(BaseModel):
     min_confidence: float = 0.1
     history_size: int = 5
     speech_min_interval_s: float = 2.0
+    state_hint_modes: list[str] = ["fuzzy"]
     dialogue_turns: int = 6
     llm: LLMSettings = LLMSettings()
 

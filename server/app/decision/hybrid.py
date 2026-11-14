@@ -19,11 +19,11 @@ class HybridDecision(DecisionModule):
         situation = describe_situation(state, voice_features, transcript, history, base.strategy, base.tone,
                                        context)
         try:
-            answer = self.llm.generate(situation)
+            answer, check = self.llm.generate_checked(situation, f"{context}\n{transcript}")
         except LLMError as exc:
             base.source = f"{self.name}_fallback"
             base.details.update(error=str(exc), llm_ms=round((time.perf_counter() - started) * 1000))
             return base
-        base.details["llm_ms"] = round((time.perf_counter() - started) * 1000)
+        base.details.update(llm_ms=round((time.perf_counter() - started) * 1000), **check)
         return Decision(reply=answer.reply, tone=base.tone, confidence=state.confidence, source=self.name,
                         strategy=base.strategy, details=base.details)

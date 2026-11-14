@@ -54,7 +54,7 @@ def test_dialogue_and_context_reach_the_prompt():
 
 
 class FakeASR:
-    def transcribe(self, audio, ts):
+    def transcribe(self, audio, ts, prompt=None):
         return Transcript(ts=ts, text="Це задорого.", duration_s=1.0, processing_ms=1.0)
 
 

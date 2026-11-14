@@ -39,11 +39,11 @@ class SpeechRecognizer:
     def warm_up(self) -> None:
         self.transcribe(np.zeros(SAMPLE_RATE, dtype=np.float32), 0)
 
-    def transcribe(self, audio: np.ndarray, ts: int) -> Transcript:
+    def transcribe(self, audio: np.ndarray, ts: int, prompt: str | None = None) -> Transcript:
         started = time.perf_counter()
         segments, _ = self._model.transcribe(audio.astype(np.float32), language=self.language,
                                              beam_size=self.beam_size, condition_on_previous_text=False,
-                                             vad_filter=False)
+                                             vad_filter=False, initial_prompt=prompt or None)
         text = " ".join(s.text.strip() for s in segments if s.no_speech_prob < 0.6).strip()
         return Transcript(ts=ts, text=text, duration_s=round(len(audio) / SAMPLE_RATE, 2),
                           processing_ms=(time.perf_counter() - started) * 1000)

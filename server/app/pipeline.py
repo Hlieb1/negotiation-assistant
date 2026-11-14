@@ -219,7 +219,8 @@ class Pipeline:
                     task.add_done_callback(lambda t: t in self._tasks and self._tasks.remove(t))
 
     def _transcribe_and_identify(self, audio: np.ndarray, ts: int) -> tuple[Transcript, SpeakerResult]:
-        transcript = self.models.asr.transcribe(audio, ts)
+        prompt = self.context[:self.settings.asr.context_prompt_chars] if self.context else None
+        transcript = self.models.asr.transcribe(audio, ts, prompt)
         speaker = self.models.speaker.identify(audio) if self.models.speaker else SpeakerResult(UNKNOWN)
         return transcript, speaker
 
@@ -272,7 +273,7 @@ class Pipeline:
         if phrase is not None and self.policy.should_hint_on_speech(vector, now):
             self._pending_phrase = None
             trigger = "speech"
-        elif self.policy.should_hint(vector, now):
+        elif self.mode in self.settings.decision.state_hint_modes and self.policy.should_hint(vector, now):
             trigger = "state"
         else:
             return None

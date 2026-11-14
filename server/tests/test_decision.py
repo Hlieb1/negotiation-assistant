@@ -135,3 +135,18 @@ def test_hint_policy_rate_stability_and_change():
     assert not policy.should_hint(calm, 4500)
     assert policy.should_hint(calm, 5000)
     assert not policy.should_hint(state("згода", confidence=0.05), 20000)
+
+
+def test_number_guard_retries_then_falls_back(fuzzy):
+    replies = iter(['{"reply": "Давайте за 8 тисяч.", "tone": "спокійний"}',
+                    '{"reply": "Добре, тоді 9 000.", "tone": "спокійний"}'])
+    module = llm_with(lambda r: chat_response(next(replies)), fuzzy)
+    decision = module.decide(state("сумнів"), {}, "Співрозмовник: Дорого.", [], "Продаю за 10 000 грн")
+    assert decision.source == "llm_fallback" and "invented numbers" in decision.details["error"]
+
+
+def test_number_guard_accepts_numbers_from_context(fuzzy):
+    replies = iter(['{"reply": "Ціна 10 тисяч справедлива для такого стану.", "tone": "впевнений"}'])
+    module = llm_with(lambda r: chat_response(next(replies)), fuzzy)
+    decision = module.decide(state("сумнів"), {}, "Співрозмовник: Дорого.", [], "Продаю за 10000 грн")
+    assert decision.source == "llm" and decision.details["retries"] == 0

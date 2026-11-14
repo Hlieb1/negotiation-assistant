@@ -35,10 +35,11 @@ audio:
 
 asr:
   enabled: true
-  model: small               # small | medium | large-v3
+  model: large-v3-turbo      # small | medium | large-v3-turbo (WER on own phrases: 55 % vs 22 %)
   language: uk
   device: cuda
-  compute_type: float16
+  compute_type: int8_float16
+  context_prompt_chars: 200  # start of the negotiation context passed to whisper as a vocabulary hint
   beam_size: 1
   min_pause_s: 0.6           # pause that ends an utterance
   max_utterance_s: 10.0
@@ -71,6 +72,7 @@ decision:
   min_confidence: 0.1
   history_size: 5            # previous hints passed to the module (no repeats)
   speech_min_interval_s: 2.0 # a finished phrase of the counterpart triggers a hint, not more often than this
+  state_hint_modes: [fuzzy]  # modes that also give hints on emotion change without new words
   dialogue_turns: 6          # last phrases of the conversation passed to the LLM
   llm:
     enabled: true
@@ -78,7 +80,7 @@ decision:
     model: qwen3:8b          # or gemma3:4b if B is too slow
     prompt_path: app/decision/llm_prompt_uk.json
     timeout_s: 4.5           # after that the fuzzy reply is used
-    temperature: 0.6
+    temperature: 0.3
     max_tokens: 100
     keep_alive: 60m
 

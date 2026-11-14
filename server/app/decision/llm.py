@@ -1,4 +1,5 @@
 import json
+import re
 import time
 from pathlib import Path
 
@@ -21,6 +22,28 @@ VOICE_PHRASES = {
 }
 
 
+DIGITS = re.compile(r"(\d[\d ]*\d|\d)(?:[.,]\d+)?\s*(тис)?", re.IGNORECASE)
+WORDS = re.compile(r"\b(одн\w*|дв\w*|три|чотири|п['’]ять|шість|сім|вісім|дев['’]ять|десять)\s+тис",
+                   re.IGNORECASE)
+WORD_VALUES = {"одн": 1, "дв": 2, "три": 3, "чот": 4, "п'я": 5, "п’я": 5, "шіс": 6, "сім": 7, "віс": 8,
+               "дев": 9, "дес": 10}
+MIN_CHECKED_NUMBER = 100
+
+
+def mentioned_numbers(text: str) -> set[int]:
+    values = set()
+    for digits, thousands in DIGITS.findall(text):
+        value = int(digits.replace(" ", ""))
+        values.add(value * 1000 if thousands else value)
+    for word in WORDS.findall(text):
+        values.add(WORD_VALUES.get(word[:3].lower(), 0) * 1000)
+    return {v for v in values if v >= MIN_CHECKED_NUMBER}
+
+
+def unsupported_numbers(reply: str, sources: str) -> set[int]:
+    return mentioned_numbers(reply) - mentioned_numbers(sources)
+
+
 class LLMReply(BaseModel):
     reply: str = Field(min_length=3, max_length=240)
     tone: str = Field(min_length=2, max_length=80)
@@ -41,12 +64,23 @@ def describe_voice(prosody_z: dict[str, float], threshold: float = 1.0) -> str:
     return "; ".join(phrases) or "голос звичний для цього співрозмовника"
 
 
+def last_counterpart_phrase(dialogue: str) -> str:
+    for line in reversed(dialogue.splitlines()):
+        speaker, _, text = line.partition(": ")
+        if speaker != "Я" and text:
+            return text
+    return ""
+
+
 def describe_situation(state: StateVector, voice_features: dict, dialogue: str, history: list[Decision],
                        strategy: str | None, tone: str | None, context: str = "") -> str:
     others = ", ".join(f"{name} {degree:.2f}" for name, degree in
                        sorted(state.degrees.items(), key=lambda kv: kv[1], reverse=True) if name != state.name)
     lines = [f"Контекст переговорів від користувача: {context}" if context else "Контекст переговорів не задано."]
     lines.append(f"Розмова (останні репліки):\n{dialogue}" if dialogue else "Слова розмови поки не розпізнано.")
+    last = last_counterpart_phrase(dialogue)
+    if last:
+        lines.append(f"Дай відповідь саме на останню репліку співрозмовника: «{last}»")
     lines += [
         f"Стан співрозмовника: {state.name} (ступінь {state.degrees.get(state.name, 0):.2f}, "
         f"впевненість розпізнавання {state.confidence:.2f}). Інші стани: {others}.",
@@ -108,16 +142,30 @@ class LLMDecision(DecisionModule):
         except (ValidationError, KeyError, ValueError) as exc:
             raise LLMError(f"invalid response: {str(exc)[:200]}") from exc
 
+    def generate_checked(self, situation: str, sources: str) -> tuple[LLMReply, dict]:
+        answer = self.generate(situation)
+        invented = unsupported_numbers(answer.reply, sources)
+        if not invented:
+            return answer, {"retries": 0}
+        note = ", ".join(str(n) for n in sorted(invented))
+        answer = self.generate(f"{situation}\nУВАГА: у попередньому варіанті були числа {note}, яких немає ні в "
+                               f"контексті, ні в розмові. Не називай їх і не пропонуй нових цін.")
+        still = unsupported_numbers(answer.reply, sources)
+        if still:
+            raise LLMError(f"invented numbers: {sorted(still)}")
+        return answer, {"retries": 1, "rejected_numbers": sorted(invented)}
+
     def decide(self, state: StateVector, voice_features: dict, transcript: str,
                history: list[Decision], context: str = "") -> Decision:
         started = time.perf_counter()
         try:
-            answer = self.generate(describe_situation(state, voice_features, transcript, history, None, None,
-                                                      context))
+            answer, check = self.generate_checked(
+                describe_situation(state, voice_features, transcript, history, None, None, context),
+                f"{context}\n{transcript}")
         except LLMError as exc:
             decision = self.fallback.decide(state, voice_features, transcript, history)
             decision.source = f"{self.name}_fallback"
             decision.details.update(error=str(exc), llm_ms=round((time.perf_counter() - started) * 1000))
             return decision
         return Decision(reply=answer.reply, tone=answer.tone, confidence=state.confidence, source=self.name,
-                        details={"llm_ms": round((time.perf_counter() - started) * 1000)})
+                        details={"llm_ms": round((time.perf_counter() - started) * 1000), **check})
