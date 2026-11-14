@@ -42,20 +42,21 @@ def collect_samples(sources: list[Path]) -> list[tuple[str, Path, str]]:
     return samples
 
 
-def evaluate(samples: list[tuple[str, Path, str]], model: str, denoise: bool) -> pd.DataFrame:
+def evaluate(samples: list[tuple[str, Path, str]], model: str, denoise: bool, padding_s: float) -> pd.DataFrame:
     classifier = VoiceEmotionClassifier(model)
     classifier.warm_up()
     detector = SpeechDetector(denoise=denoise)
     rows = []
     for source, path, expected in samples:
         segment = detector.process(load_audio(path))
-        result = classifier.predict(segment.speech_span(), 0)
+        speech = segment.speech_span(padding_s)
+        result = classifier.predict(speech, 0)
         rows.append({
             "source": source,
             "file": path.name,
             "expected": expected,
             "predicted": EMOTIONS[int(result.probs.argmax())] if result.probs is not None else "no_speech",
-            "speech_s": round(len(segment.speech_span()) / SAMPLE_RATE, 2),
+            "speech_s": round(len(speech) / SAMPLE_RATE, 2),
             "processing_ms": round(result.processing_ms, 1),
             **({e: round(float(p), 4) for e, p in zip(EMOTIONS, result.probs)} if result.probs is not None else {}),
         })
@@ -70,17 +71,18 @@ def main() -> None:
     parser.add_argument("sources", type=Path, nargs="+")
     parser.add_argument("--models", nargs="+",
                         default=["emotion2vec/emotion2vec_plus_large", "emotion2vec/emotion2vec_plus_base"])
-    parser.add_argument("--no-denoise", action="store_true")
+    parser.add_argument("--denoise", action="store_true")
+    parser.add_argument("--padding-s", type=float, default=0.25)
     args = parser.parse_args()
 
     samples = collect_samples(args.sources)
     print(f"Записів: {len(samples)}; за емоціями: {pd.Series([s[2] for s in samples]).value_counts().to_dict()}")
     out_dir = args.sources[0]
+    suffix = f"{'_denoise' if args.denoise else ''}_pad{args.padding_s:g}"
     summary = []
     for model in args.models:
-        result = evaluate(samples, model, not args.no_denoise)
+        result = evaluate(samples, model, args.denoise, args.padding_s)
         name = model.split("/")[-1]
-        suffix = "_nodenoise" if args.no_denoise else ""
         result.to_csv(out_dir / f"eval_{name}{suffix}.csv", index=False)
         accuracy = (result.expected == result.predicted).mean()
         print(f"\n{name}: accuracy {accuracy:.2f}, median {result.processing_ms.median():.0f} ms")

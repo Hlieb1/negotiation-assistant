@@ -21,7 +21,8 @@ video:
 
 audio:
   enabled: true
-  denoise: true              # spectral gating (noisereduce) before VAD
+  denoise: false             # spectral gating (noisereduce); lowers emotion accuracy, see research notes
+  speech_padding_s: 0.25     # context kept around detected speech for emotion and ASR
   vad_aggressiveness: 2      # webrtcvad 0..3
   vad_frame_ms: 30
   min_rms_db: -45            # frames quieter than this are never speech

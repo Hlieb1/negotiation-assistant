@@ -39,7 +39,8 @@ class VideoSettings(BaseModel):
 
 class AudioSettings(BaseModel):
     enabled: bool = True
-    denoise: bool = True
+    denoise: bool = False
+    speech_padding_s: float = 0.25
     vad_aggressiveness: int = 2
     vad_frame_ms: int = 30
     min_rms_db: float = -45.0

@@ -53,6 +53,7 @@ def describe(features: dict, probs: np.ndarray | None) -> str:
 
 
 def run_live(detector, classifier, asr, settings, chunk_s: float) -> None:
+    padding = settings.audio.speech_padding_s
     chunks: queue.Queue = queue.Queue()
     utterances = UtteranceBuffer(settings.asr.min_pause_s, settings.asr.max_utterance_s)
     with sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype="float32", blocksize=int(SAMPLE_RATE * chunk_s),
@@ -61,15 +62,15 @@ def run_live(detector, classifier, asr, settings, chunk_s: float) -> None:
         while True:
             segment = detector.process(chunks.get())
             features = voice_features(segment)
-            result = classifier.predict(segment.speech_span(), 0)
+            result = classifier.predict(segment.speech_span(padding), 0)
             print(describe(features, result.probs))
-            utterance = utterances.add(segment.speech_span(), segment.trailing_silence_s(), 0)
+            utterance = utterances.add(segment.speech_span(padding), segment.trailing_silence_s(), 0)
             if utterance is not None and asr is not None:
                 transcript = asr.transcribe(utterance[0], 0)
                 print(f"    текст ({transcript.processing_ms:.0f} мс): {transcript.text or '—'}")
 
 
-def run_scenario(detector, classifier, asr, record_s: float, rounds: int) -> None:
+def run_scenario(detector, classifier, asr, padding: float, record_s: float, rounds: int) -> None:
     out_dir = SERVER_DIR / "recordings" / f"voice_demo_{datetime.now():%Y%m%d_%H%M%S}"
     out_dir.mkdir(parents=True)
     rows = []
@@ -93,8 +94,8 @@ def run_scenario(detector, classifier, asr, record_s: float, rounds: int) -> Non
             sf.write(out_dir / name, audio, SAMPLE_RATE, subtype="PCM_16")
             segment = detector.process(audio)
             features = voice_features(segment)
-            result = classifier.predict(segment.speech_span(), 0)
-            transcript = asr.transcribe(segment.speech_span(), 0).text if asr and segment.has_speech else ""
+            result = classifier.predict(segment.speech_span(padding), 0)
+            transcript = asr.transcribe(segment.speech_span(padding), 0).text if asr and segment.has_speech else ""
             print(describe(features, result.probs))
             print(f"    текст: {transcript or '—'}")
             rows.append({
@@ -137,7 +138,7 @@ def main() -> None:
     print(f"Готово за {time.perf_counter() - started:.0f} с.")
     try:
         if args.scenario:
-            run_scenario(detector, classifier, asr, args.record_s, args.rounds)
+            run_scenario(detector, classifier, asr, audio.speech_padding_s, args.record_s, args.rounds)
         else:
             run_live(detector, classifier, asr, settings, args.chunk_s)
     except KeyboardInterrupt:

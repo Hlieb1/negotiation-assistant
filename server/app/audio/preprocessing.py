@@ -27,11 +27,14 @@ class SpeechSegment:
         frames = np.flatnonzero(self.mask)
         return np.concatenate([self.audio[i * self.frame_len:(i + 1) * self.frame_len] for i in frames])
 
-    def speech_span(self) -> np.ndarray:
+    def speech_span(self, padding_s: float = 0.0) -> np.ndarray:
         if not self.has_speech:
             return np.zeros(0, dtype=np.float32)
         frames = np.flatnonzero(self.mask)
-        return self.audio[frames[0] * self.frame_len:(frames[-1] + 1) * self.frame_len]
+        padding = int(padding_s * SAMPLE_RATE)
+        start = max(0, frames[0] * self.frame_len - padding)
+        end = min(len(self.audio), (frames[-1] + 1) * self.frame_len + padding)
+        return self.audio[start:end]
 
     def trailing_silence_s(self) -> float:
         if not self.has_speech:
@@ -49,7 +52,7 @@ def pcm16_to_float(samples: np.ndarray, sample_rate: int) -> np.ndarray:
 
 class SpeechDetector:
     def __init__(self, aggressiveness: int = 2, frame_ms: int = 30, min_rms_db: float = -45.0,
-                 hangover_frames: int = 3, denoise: bool = True):
+                 hangover_frames: int = 3, denoise: bool = False):
         self.vad = webrtcvad.Vad(aggressiveness)
         self.frame_len = SAMPLE_RATE * frame_ms // 1000
         self.min_rms_db = min_rms_db

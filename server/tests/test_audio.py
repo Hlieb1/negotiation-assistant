@@ -72,3 +72,9 @@ def test_utterance_buffer_flushes_on_pause_and_length():
     for i in range(2):
         assert buffer.add(speech, 0.0, 7000 + i) is None
     assert len(buffer.add(speech, 0.0, 9000)[0]) == 3 * SAMPLE_RATE
+
+
+def test_speech_span_padding_is_clipped_to_audio():
+    segment = segment_from_mask([0, 0, 1, 0, 0, 0])
+    assert len(segment.speech_span(padding_s=FRAME / SAMPLE_RATE)) == 3 * FRAME
+    assert len(segment.speech_span(padding_s=1.0)) == 6 * FRAME

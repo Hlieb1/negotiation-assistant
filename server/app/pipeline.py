@@ -127,7 +127,9 @@ class Pipeline:
     def _analyze_audio(self, samples: np.ndarray, sample_rate: int, ts: int):
         segment = self.speech_detector.process(pcm16_to_float(samples, sample_rate))
         features = voice_features(segment)
-        voice = self.models.voice.predict(segment.speech_span(), ts) if self.models.voice else VoiceResult(ts, None)
+        if self.models.voice is None:
+            return segment, features, VoiceResult(ts, None)
+        voice = self.models.voice.predict(segment.speech_span(self.settings.audio.speech_padding_s), ts)
         return segment, features, voice
 
     async def _audio_loop(self) -> None:
@@ -151,7 +153,8 @@ class Pipeline:
                 processing_ms=now_ms() - started,
             )
             if self.models.asr is not None:
-                utterance = self.utterances.add(segment.speech_span(), segment.trailing_silence_s(), ts)
+                utterance = self.utterances.add(segment.speech_span(self.settings.audio.speech_padding_s),
+                                                 segment.trailing_silence_s(), ts)
                 if utterance is not None:
                     task = asyncio.create_task(self._transcribe(*utterance, recv_ms))
                     self._tasks.append(task)
