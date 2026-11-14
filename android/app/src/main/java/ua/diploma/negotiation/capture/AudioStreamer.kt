@@ -60,13 +60,40 @@ class AudioStreamer(private val onChunk: (ts: Long, pcm16le: ByteArray) -> Unit)
         job = null
     }
 
-    private fun toLittleEndian(samples: ShortArray): ByteArray {
-        val buffer = ByteBuffer.allocate(samples.size * 2).order(ByteOrder.LITTLE_ENDIAN)
-        buffer.asShortBuffer().put(samples)
-        return buffer.array()
-    }
-
     companion object {
+        @SuppressLint("MissingPermission")
+        fun recordOnce(seconds: Int): ByteArray? {
+            val minBuffer = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL, ENCODING)
+            val record = AudioRecord(
+                MediaRecorder.AudioSource.VOICE_RECOGNITION, SAMPLE_RATE, CHANNEL, ENCODING,
+                maxOf(minBuffer, SAMPLE_RATE * 2)
+            )
+            if (record.state != AudioRecord.STATE_INITIALIZED) {
+                record.release()
+                return null
+            }
+            val samples = ShortArray(SAMPLE_RATE * seconds)
+            record.startRecording()
+            try {
+                var filled = 0
+                while (filled < samples.size) {
+                    val read = record.read(samples, filled, samples.size - filled)
+                    if (read < 0) return null
+                    filled += read
+                }
+            } finally {
+                record.stop()
+                record.release()
+            }
+            return toLittleEndian(samples)
+        }
+
+        private fun toLittleEndian(samples: ShortArray): ByteArray {
+            val buffer = ByteBuffer.allocate(samples.size * 2).order(ByteOrder.LITTLE_ENDIAN)
+            buffer.asShortBuffer().put(samples)
+            return buffer.array()
+        }
+
         const val SAMPLE_RATE = 16000
         const val CHUNK_SECONDS = 2
         private const val CHANNEL = AudioFormat.CHANNEL_IN_MONO

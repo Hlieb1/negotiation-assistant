@@ -9,7 +9,8 @@ from pydantic import BaseModel
 
 from .config import Settings, resolve_path
 from .pipeline import Models, Pipeline
-from .protocol import AudioChunk, Error, Mode, SessionControl, Status, VideoFrame, now_ms
+from .audio.preprocessing import SpeechDetector, pcm16_to_float
+from .protocol import AudioChunk, Enrolled, Error, Mode, SessionControl, Status, VideoFrame, VoiceEnroll, now_ms
 from .session_log import MediaRecorder, SessionLog
 
 POLL_INTERVAL_S = 0.2
@@ -47,10 +48,13 @@ class Session:
     async def send(self, message: BaseModel) -> None:
         await self._send_text(message.model_dump_json())
 
-    async def handle(self, message: VideoFrame | AudioChunk | SessionControl, recv_ms: int) -> None:
+    async def handle(self, message: VideoFrame | AudioChunk | SessionControl | VoiceEnroll, recv_ms: int) -> None:
+        if isinstance(message, VoiceEnroll):
+            await self.enroll(message)
+            return
         if isinstance(message, SessionControl):
             if message.action == "start":
-                await self.start(message.mode or self.settings.session.default_mode)
+                await self.start(message.mode or self.settings.session.default_mode, message.context)
             else:
                 await self.stop()
             return
@@ -70,20 +74,48 @@ class Session:
         except ValueError as exc:
             await self.send(Error(ts=now_ms(), detail=f"{message.type}: {exc}"))
 
-    async def start(self, mode: Mode) -> None:
+    async def enroll(self, message: VoiceEnroll) -> None:
+        verifier = self.models.speaker
+        if verifier is None:
+            await self.send(Enrolled(ts=now_ms(), ok=False, speech_s=0, detail="розпізнавання мовця вимкнено"))
+            return
+        try:
+            samples = decode_pcm16(base64.b64decode(message.pcm16_b64, validate=True))
+        except ValueError as exc:
+            await self.send(Enrolled(ts=now_ms(), ok=False, speech_s=0, detail=str(exc)))
+            return
+        audio = self.settings.audio
+        detector = SpeechDetector(audio.vad_aggressiveness, audio.vad_frame_ms, audio.min_rms_db,
+                                  target_level_db=audio.target_level_db, max_gain_db=audio.max_gain_db,
+                                  noise_margin_db=audio.noise_margin_db)
+        speech = detector.process(pcm16_to_float(samples, message.sample_rate)).speech_audio()
+        speech_s = round(len(speech) / 16000, 1)
+        if speech_s < self.settings.speaker.min_enroll_s:
+            await self.send(Enrolled(ts=now_ms(), ok=False, speech_s=speech_s,
+                                     detail=f"замало мови: {speech_s} с, потрібно щонайменше "
+                                            f"{self.settings.speaker.min_enroll_s:g} с"))
+            return
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(self.models.audio_executor, verifier.enroll, speech)
+        await self.send(Enrolled(ts=now_ms(), ok=True, speech_s=speech_s, detail="зразок голосу збережено"))
+
+    async def start(self, mode: Mode, context: str = "") -> None:
         if self.active:
             await self.stop()
         storage = self.settings.storage
         self.session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.mode = mode
         self.log = SessionLog(resolve_path(storage.log_dir), self.session_id)
-        self.log.write("session_start", mode=mode, config=self.settings.model_dump(mode="json"))
-        self.pipeline = Pipeline(mode, self.settings, self.models, self.log.write)
+        voice_profile = self.models.speaker is not None and self.models.speaker.enrolled
+        self.log.write("session_start", mode=mode, context=context, voice_profile=voice_profile,
+                       config=self.settings.model_dump(mode="json"))
+        self.pipeline = Pipeline(mode, self.settings, self.models, self.log.write, context)
         self.pipeline.start()
         if storage.record_media:
             self.recorder = MediaRecorder(resolve_path(storage.recordings_dir) / self.session_id)
         self._hint_task = asyncio.create_task(self._hint_loop())
-        await self.send(Status(ts=now_ms(), session="started", mode=mode, session_id=self.session_id))
+        await self.send(Status(ts=now_ms(), session="started", mode=mode, session_id=self.session_id,
+                               voice_profile=voice_profile))
 
     async def stop(self) -> None:
         if not self.active:

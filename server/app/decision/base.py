@@ -38,7 +38,7 @@ class DecisionModule(ABC):
 
     @abstractmethod
     def decide(self, state: StateVector, voice_features: dict, transcript: str,
-               history: list[Decision]) -> Decision:
+               history: list[Decision], context: str = "") -> Decision:
         ...
 
     def warm_up(self) -> None:

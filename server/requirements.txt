@@ -35,6 +35,9 @@ faster-whisper>=1.1
 funasr>=1.2
 huggingface_hub>=0.24
 
+# Speaker verification (whose voice is it): ECAPA-TDNN
+speechbrain>=1.0
+
 # Decision module A
 scikit-fuzzy>=0.5
 networkx>=3.0             # scikit-fuzzy dependency

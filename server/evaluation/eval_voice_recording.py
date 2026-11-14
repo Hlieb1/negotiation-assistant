@@ -45,10 +45,9 @@ def collect_samples(sources: list[Path]) -> list[tuple[str, Path, str]]:
 def evaluate(samples: list[tuple[str, Path, str]], model: str, denoise: bool, padding_s: float) -> pd.DataFrame:
     classifier = VoiceEmotionClassifier(model)
     classifier.warm_up()
-    detector = SpeechDetector(denoise=denoise)
     rows = []
     for source, path, expected in samples:
-        segment = detector.process(load_audio(path))
+        segment = SpeechDetector(denoise=denoise, target_level_db=None, min_rms_db=-45).process(load_audio(path))
         speech = segment.speech_span(padding_s)
         result = classifier.predict(speech, 0)
         rows.append({

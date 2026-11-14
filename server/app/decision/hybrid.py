@@ -13,10 +13,11 @@ class HybridDecision(DecisionModule):
         self.llm = llm
 
     def decide(self, state: StateVector, voice_features: dict, transcript: str,
-               history: list[Decision]) -> Decision:
+               history: list[Decision], context: str = "") -> Decision:
         base = self.fuzzy.decide(state, voice_features, transcript, history)
         started = time.perf_counter()
-        situation = describe_situation(state, voice_features, transcript, history, base.strategy, base.tone)
+        situation = describe_situation(state, voice_features, transcript, history, base.strategy, base.tone,
+                                       context)
         try:
             answer = self.llm.generate(situation)
         except LLMError as exc:

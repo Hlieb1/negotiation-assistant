@@ -16,6 +16,7 @@ data class AppSettings(
     val mode: Mode = Mode.FUZZY,
     val backCamera: Boolean = true,
     val sendFps: Int = 4,
+    val context: String = "",
 ) {
     val url: String get() = "ws://${host.trim()}:$port/ws"
 }
@@ -31,6 +32,7 @@ class SettingsStore(private val context: Context) {
             mode = Mode.entries.firstOrNull { it.wire == prefs[MODE] } ?: defaults.mode,
             backCamera = prefs[BACK_CAMERA] ?: defaults.backCamera,
             sendFps = prefs[SEND_FPS] ?: defaults.sendFps,
+            context = prefs[CONTEXT] ?: defaults.context,
         )
     }
 
@@ -41,6 +43,7 @@ class SettingsStore(private val context: Context) {
             prefs[MODE] = settings.mode.wire
             prefs[BACK_CAMERA] = settings.backCamera
             prefs[SEND_FPS] = settings.sendFps
+            prefs[CONTEXT] = settings.context
         }
     }
 
@@ -50,5 +53,6 @@ class SettingsStore(private val context: Context) {
         val MODE = stringPreferencesKey("mode")
         val BACK_CAMERA = booleanPreferencesKey("back_camera")
         val SEND_FPS = intPreferencesKey("send_fps")
+        val CONTEXT = stringPreferencesKey("context")
     }
 }

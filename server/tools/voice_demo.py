@@ -126,7 +126,9 @@ def main() -> None:
     audio = settings.audio
     started = time.perf_counter()
     print("Завантаження моделі емоцій голосу (emotion2vec+, ~30–50 с)...", flush=True)
-    detector = SpeechDetector(audio.vad_aggressiveness, audio.vad_frame_ms, audio.min_rms_db, denoise=audio.denoise)
+    detector = SpeechDetector(audio.vad_aggressiveness, audio.vad_frame_ms, audio.min_rms_db, denoise=audio.denoise,
+                              target_level_db=audio.target_level_db, max_gain_db=audio.max_gain_db,
+                              noise_margin_db=audio.noise_margin_db)
     classifier = VoiceEmotionClassifier(audio.voice_model, audio.voice_device, audio.min_speech_s)
     classifier.warm_up()
     asr = None

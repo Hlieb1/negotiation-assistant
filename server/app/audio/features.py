@@ -34,6 +34,7 @@ def voice_features(segment: SpeechSegment) -> dict[str, float]:
     pause_ratio, pauses = pause_stats(segment)
     features = {
         "speech_s": round(speech_s, 2),
+        "gain_db": round(segment.gain_db, 1),
         "speech_ratio": round(segment.speech_ratio, 3),
         "pause_ratio": round(pause_ratio, 3),
         "pauses_per_min": round(pauses / (len(segment.audio) / SAMPLE_RATE) * 60, 1),
@@ -52,7 +53,7 @@ def voice_features(segment: SpeechSegment) -> dict[str, float]:
         "f0_std_st": round(_semitone_std(f0), 2) if len(f0) else 0.0,
         "f0_range_st": round(float(12 * np.log2(np.percentile(f0, 95) / np.percentile(f0, 5))), 2) if len(f0) > 1 else 0.0,
         "voiced_ratio": round(float(voiced.mean()), 3),
-        "loudness_db": round(float(np.mean(rms_db)), 1),
+        "loudness_db": round(float(np.mean(rms_db)) - segment.gain_db, 1),
         "loudness_std_db": round(float(np.std(rms_db)), 1),
         "speech_rate": round(len(onsets) / speech_s, 2),
         "spectral_centroid_hz": round(float(librosa.feature.spectral_centroid(y=speech, sr=SAMPLE_RATE, hop_length=HOP).mean()), 0),

@@ -26,7 +26,10 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -127,28 +130,39 @@ fun SessionScreen(state: UiState, viewModel: SessionViewModel) {
 
 @Composable
 private fun StatusBar(state: UiState, onSettings: () -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        val connected = state.connection == ConnectionStatus.CONNECTED
-        Chip(if (connected) Color(0xFF2E7D32) else Color(0xFF616161), state.connection.label)
-        Chip(Color(0xFF37474F), state.settings.mode.label)
-        if (state.running) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(Color(0xCC000000)).padding(8.dp, 4.dp),
-            ) {
-                Box(Modifier.size(10.dp).clip(CircleShape).background(Color.Red))
-                Spacer(Modifier.width(6.dp))
-                Text("Аналіз", color = Color.White, fontSize = 13.sp)
+    Row(verticalAlignment = Alignment.Top) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            val connection = when {
+                !state.running && state.connection == ConnectionStatus.DISCONNECTED -> "підключиться після «Старт»"
+                else -> state.connection.label
+            }
+            val connected = state.connection == ConnectionStatus.CONNECTED
+            Chip(if (connected) Color(0xFF2E7D32) else Color(0xCC37474F), "Сервер: $connection")
+            Chip(Color(0xCC37474F), "Режим: ${state.settings.mode.label}")
+            if (state.running && state.voiceProfile == false) {
+                Chip(Color(0xCCE65100), "Зразок вашого голосу не записано: усі голоси вважаються співрозмовником")
+            }
+            if (state.running) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(Color(0xCC000000)).padding(10.dp, 4.dp),
+                ) {
+                    Box(Modifier.size(10.dp).clip(CircleShape).background(Color.Red))
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        "Аналіз · кадрів ${state.framesSent} · аудіо ${state.audioChunksSent * 2} с",
+                        color = Color.White, fontSize = 13.sp,
+                    )
+                }
             }
         }
-        Spacer(Modifier.weight(1f))
-        OutlinedButton(onClick = onSettings) { Text("Налаштування", color = Color.White) }
-    }
-    if (state.running) {
-        Text(
-            "Надіслано: кадрів ${state.framesSent}, аудіо ${state.audioChunksSent * 2} с",
-            color = Color(0xFFCFD8DC), fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp),
-        )
+        Spacer(Modifier.width(8.dp))
+        IconButton(
+            onClick = onSettings,
+            modifier = Modifier.clip(CircleShape).background(Color(0xCC37474F)),
+        ) {
+            Icon(Icons.Filled.Settings, contentDescription = "Налаштування", tint = Color.White)
+        }
     }
 }
 
@@ -191,6 +205,10 @@ private fun HintCard(hint: Hint?, running: Boolean) {
             modifier = Modifier.fillMaxWidth(),
         )
         Text("Впевненість ${(hint.confidence * 100).toInt()} %", color = Color(0xFF90A4AE), fontSize = 12.sp)
+        if (hint.heard.isNotBlank()) {
+            Spacer(Modifier.height(10.dp))
+            Text("Співрозмовник: «${hint.heard}»", color = Color(0xFFB0BEC5), fontSize = 15.sp)
+        }
         Spacer(Modifier.height(10.dp))
         Text(hint.reply, color = Color.White, fontSize = 26.sp, lineHeight = 32.sp, fontWeight = FontWeight.Medium)
         Spacer(Modifier.height(8.dp))

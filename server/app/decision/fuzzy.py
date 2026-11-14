@@ -110,7 +110,7 @@ class FuzzyDecision(DecisionModule):
         return strategy, level, activations, round(tone_value, 4)
 
     def decide(self, state: StateVector, voice_features: dict, transcript: str,
-               history: list[Decision]) -> Decision:
+               history: list[Decision], context: str = "") -> Decision:
         strategy, level, activations, tone_value = self.evaluate(state)
         return Decision(
             reply=self.replies.pick(strategy, history),

@@ -41,15 +41,16 @@ def describe_voice(prosody_z: dict[str, float], threshold: float = 1.0) -> str:
     return "; ".join(phrases) or "голос звичний для цього співрозмовника"
 
 
-def describe_situation(state: StateVector, voice_features: dict, transcript: str, history: list[Decision],
-                       strategy: str | None, tone: str | None) -> str:
+def describe_situation(state: StateVector, voice_features: dict, dialogue: str, history: list[Decision],
+                       strategy: str | None, tone: str | None, context: str = "") -> str:
     others = ", ".join(f"{name} {degree:.2f}" for name, degree in
                        sorted(state.degrees.items(), key=lambda kv: kv[1], reverse=True) if name != state.name)
-    lines = [
+    lines = [f"Контекст переговорів від користувача: {context}" if context else "Контекст переговорів не задано."]
+    lines.append(f"Розмова (останні репліки):\n{dialogue}" if dialogue else "Слова розмови поки не розпізнано.")
+    lines += [
         f"Стан співрозмовника: {state.name} (ступінь {state.degrees.get(state.name, 0):.2f}, "
         f"впевненість розпізнавання {state.confidence:.2f}). Інші стани: {others}.",
-        f"Голос: {describe_voice(voice_features)}.",
-        f"Остання фраза співрозмовника: «{transcript}»." if transcript else "Що сказав співрозмовник — невідомо.",
+        f"Голос співрозмовника: {describe_voice(voice_features)}.",
     ]
     if history:
         lines.append("Попередні підказки: " + " | ".join(f"«{d.reply}»" for d in history[-3:]) + ". Не повторюй їх.")
@@ -108,10 +109,11 @@ class LLMDecision(DecisionModule):
             raise LLMError(f"invalid response: {str(exc)[:200]}") from exc
 
     def decide(self, state: StateVector, voice_features: dict, transcript: str,
-               history: list[Decision]) -> Decision:
+               history: list[Decision], context: str = "") -> Decision:
         started = time.perf_counter()
         try:
-            answer = self.generate(describe_situation(state, voice_features, transcript, history, None, None))
+            answer = self.generate(describe_situation(state, voice_features, transcript, history, None, None,
+                                                      context))
         except LLMError as exc:
             decision = self.fallback.decide(state, voice_features, transcript, history)
             decision.source = f"{self.name}_fallback"

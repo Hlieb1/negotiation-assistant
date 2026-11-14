@@ -24,7 +24,10 @@ audio:
   speech_padding_s: 0.25     # context kept around detected speech for emotion and ASR
   vad_aggressiveness: 2      # webrtcvad 0..3
   vad_frame_ms: 30
-  min_rms_db: -45            # frames quieter than this are never speech
+  min_rms_db: -55            # frames quieter than this (after gain) are never speech
+  target_level_db: -20       # slow gain control: loud speech frames are brought to this level
+  max_gain_db: 30
+  noise_margin_db: 6         # speech must be this much above the running noise floor
   voice_model: emotion2vec/emotion2vec_plus_large   # or emotion2vec/emotion2vec_plus_base
   voice_device: cuda:0
   min_speech_s: 0.5          # shorter speech in a chunk is not classified
@@ -40,11 +43,22 @@ asr:
   min_pause_s: 0.6           # pause that ends an utterance
   max_utterance_s: 10.0
 
+speaker:
+  enabled: true
+  source: speechbrain/spkrec-ecapa-voxceleb   # ECAPA-TDNN speaker embeddings
+  savedir: models/spkrec-ecapa-voxceleb
+  profile_path: profiles/owner.npy           # voice sample of the app user, recorded in the app
+  device: cuda:0
+  threshold: 0.35            # cosine similarity to the sample at or above which a phrase is "me"
+  min_speech_s: 0.8          # shorter speech keeps the previous speaker label
+  min_enroll_s: 6.0
+
 fusion:
   emotion_weights: {face: 0.65, voice: 0.35}   # which emotion; face is more accurate (78 % vs 57 %)
   valence_weights: {face: 0.4, voice: 0.6}     # negative/neutral/positive; voice reaches 87 %
   prosody_arousal_weight: 0.5                  # share of arousal taken from pitch, loudness and tempo
   max_age_s: 6.0                               # older modality data is ignored
+  state_switch_margin: 0.05                    # a new state must exceed the current one by this degree
   baseline_history: 30                         # speech chunks kept for the speaker's own prosody baseline
   baseline_min_samples: 3
   rules_path: rules/state_rules.yaml
@@ -56,6 +70,8 @@ decision:
   stable_s: 1.0              # a new state must hold this long before a hint
   min_confidence: 0.1
   history_size: 5            # previous hints passed to the module (no repeats)
+  speech_min_interval_s: 2.0 # a finished phrase of the counterpart triggers a hint, not more often than this
+  dialogue_turns: 6          # last phrases of the conversation passed to the LLM
   llm:
     enabled: true
     base_url: http://127.0.0.1:11434

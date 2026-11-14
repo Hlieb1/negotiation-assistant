@@ -16,19 +16,26 @@ data class Hint(
     val tone: String,
     val mode: String,
     val latencyMs: Long,
+    val trigger: String,
+    val heard: String,
 )
 
 sealed interface ServerMessage {
     data class HintMessage(val hint: Hint) : ServerMessage
-    data class Status(val session: String, val mode: String, val sessionId: String) : ServerMessage
+    data class Status(val session: String, val mode: String, val sessionId: String, val voiceProfile: Boolean) :
+        ServerMessage
+    data class Enrolled(val ok: Boolean, val speechSeconds: Double, val detail: String) : ServerMessage
     data class Error(val detail: String) : ServerMessage
 }
 
 object Protocol {
-    fun session(action: String, mode: Mode? = null): String = JSONObject()
+    fun session(action: String, mode: Mode? = null, context: String = ""): String = JSONObject()
         .put("type", "session")
         .put("action", action)
-        .apply { if (mode != null) put("mode", mode.wire) }
+        .apply {
+            if (mode != null) put("mode", mode.wire)
+            if (context.isNotBlank()) put("context", context.trim())
+        }
         .toString()
 
     fun videoFrame(ts: Long, jpegBase64: String): String = JSONObject()
@@ -39,6 +46,13 @@ object Protocol {
 
     fun audioChunk(ts: Long, pcmBase64: String, sampleRate: Int): String = JSONObject()
         .put("type", "audio_chunk")
+        .put("ts", ts)
+        .put("pcm16_b64", pcmBase64)
+        .put("sample_rate", sampleRate)
+        .toString()
+
+    fun enroll(ts: Long, pcmBase64: String, sampleRate: Int): String = JSONObject()
+        .put("type", "enroll")
         .put("ts", ts)
         .put("pcm16_b64", pcmBase64)
         .put("sample_rate", sampleRate)
@@ -56,10 +70,16 @@ object Protocol {
                     tone = json.getString("tone"),
                     mode = json.getString("mode"),
                     latencyMs = json.getLong("latency_ms"),
+                    trigger = json.optString("trigger", "state"),
+                    heard = json.optString("heard", ""),
                 )
             )
             "status" -> ServerMessage.Status(
-                json.getString("session"), json.getString("mode"), json.optString("session_id")
+                json.getString("session"), json.getString("mode"), json.optString("session_id"),
+                json.optBoolean("voice_profile", false),
+            )
+            "enrolled" -> ServerMessage.Enrolled(
+                json.getBoolean("ok"), json.optDouble("speech_s", 0.0), json.optString("detail")
             )
             "error" -> ServerMessage.Error(json.getString("detail"))
             else -> null

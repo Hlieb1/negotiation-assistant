@@ -42,11 +42,25 @@ class AudioSettings(BaseModel):
     speech_padding_s: float = 0.25
     vad_aggressiveness: int = 2
     vad_frame_ms: int = 30
-    min_rms_db: float = -45.0
+    min_rms_db: float = -55.0
+    target_level_db: float | None = -20.0
+    max_gain_db: float = 30.0
+    noise_margin_db: float = 6.0
     voice_model: str = "emotion2vec/emotion2vec_plus_large"
     voice_device: str = "cuda:0"
     min_speech_s: float = 0.5
     smoothing_window_s: float = 6.0
+
+
+class SpeakerSettings(BaseModel):
+    enabled: bool = True
+    source: str = "speechbrain/spkrec-ecapa-voxceleb"
+    savedir: Path = Path("models/spkrec-ecapa-voxceleb")
+    profile_path: Path = Path("profiles/owner.npy")
+    device: str = "cuda:0"
+    threshold: float = 0.35
+    min_speech_s: float = 0.8
+    min_enroll_s: float = 6.0
 
 
 class AsrSettings(BaseModel):
@@ -65,6 +79,7 @@ class FusionSettings(BaseModel):
     valence_weights: dict[str, float] = {"face": 0.4, "voice": 0.6}
     prosody_arousal_weight: float = 0.5
     max_age_s: float = 6.0
+    state_switch_margin: float = 0.05
     baseline_history: int = 30
     baseline_min_samples: int = 3
     rules_path: Path = Path("rules/state_rules.yaml")
@@ -88,6 +103,8 @@ class DecisionSettings(BaseModel):
     stable_s: float = 1.0
     min_confidence: float = 0.1
     history_size: int = 5
+    speech_min_interval_s: float = 2.0
+    dialogue_turns: int = 6
     llm: LLMSettings = LLMSettings()
 
 
@@ -103,6 +120,7 @@ class Settings(BaseModel):
     video: VideoSettings = VideoSettings()
     audio: AudioSettings = AudioSettings()
     asr: AsrSettings = AsrSettings()
+    speaker: SpeakerSettings = SpeakerSettings()
     fusion: FusionSettings = FusionSettings()
     decision: DecisionSettings = DecisionSettings()
     storage: StorageSettings = StorageSettings()

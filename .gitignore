@@ -27,3 +27,5 @@ android/.idea/
 Thumbs.db
 android/.kotlin/
 android/app/release/
+server/profiles/
+server/models/*/

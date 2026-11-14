@@ -3,8 +3,10 @@ from .protocol import Hint, Mode
 
 
 class HintPolicy:
-    def __init__(self, min_interval_s: float, stable_s: float, min_confidence: float):
+    def __init__(self, min_interval_s: float, stable_s: float, min_confidence: float,
+                 speech_min_interval_s: float = 2.0):
         self.min_interval_ms = int(min_interval_s * 1000)
+        self.speech_min_interval_ms = int(speech_min_interval_s * 1000)
         self.stable_ms = int(stable_s * 1000)
         self.min_confidence = min_confidence
         self._candidate: str | None = None
@@ -24,8 +26,15 @@ class HintPolicy:
         self._last_state, self._last_hint_ms = state.name, now_ms
         return True
 
+    def should_hint_on_speech(self, state: StateVector, now_ms: int) -> bool:
+        if self._last_hint_ms is not None and now_ms - self._last_hint_ms < self.speech_min_interval_ms:
+            return False
+        self._last_state, self._last_hint_ms = state.name, now_ms
+        return True
 
-def build_hint(decision: Decision, state: StateVector, mode: Mode, now_ms: int, latency_ms: int) -> Hint:
+
+def build_hint(decision: Decision, state: StateVector, mode: Mode, now_ms: int, latency_ms: int,
+               trigger: str = "state", heard: str = "") -> Hint:
     return Hint(
         ts=now_ms,
         state=state.name,
@@ -34,4 +43,6 @@ def build_hint(decision: Decision, state: StateVector, mode: Mode, now_ms: int, 
         tone=decision.tone,
         mode=mode,
         latency_ms=latency_ms,
+        trigger=trigger,
+        heard=heard,
     )

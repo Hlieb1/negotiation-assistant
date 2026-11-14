@@ -35,7 +35,9 @@ class MainActivity : ComponentActivity() {
 private fun App(viewModel: SessionViewModel = viewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     when (state.screen) {
-        Screen.SETTINGS -> SettingsScreen(state.settings, viewModel::saveSettings, viewModel::openSession)
+        Screen.SETTINGS -> SettingsScreen(
+            state.settings, state.enrollment, viewModel::saveSettings, viewModel::openSession, viewModel::enrollVoice
+        )
         Screen.SESSION -> {
             BackHandler { viewModel.openSettings() }
             SessionScreen(state, viewModel)

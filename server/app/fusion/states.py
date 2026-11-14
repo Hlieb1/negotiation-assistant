@@ -36,6 +36,26 @@ def signals(fused: FusedEmotion) -> dict[str, float]:
     }
 
 
+class StateStabilizer:
+    def __init__(self, margin: float):
+        self.margin = margin
+        self.current: str | None = None
+
+    def update(self, state: NegotiationState) -> NegotiationState:
+        degrees = state.degrees
+        if self.current is None or self.current not in degrees or \
+                degrees[state.name] - degrees[self.current] >= self.margin:
+            self.current = state.name
+            return state
+        if state.name == self.current:
+            return state
+        uniform = 1.0 / len(degrees)
+        sharpness = max(0.0, (degrees[self.current] - uniform) / (1.0 - uniform))
+        confidence = sharpness * (0.6 + 0.4 * state.fused.coverage)
+        return NegotiationState(name=self.current, degrees=degrees, confidence=round(confidence, 4),
+                                fused=state.fused)
+
+
 class StateMapper:
     def __init__(self, rules: dict):
         self.states = rules["states"]

@@ -10,10 +10,11 @@ import numpy as np
 from .audio.asr import SpeechRecognizer, Transcript, UtteranceBuffer
 from .audio.features import voice_features
 from .audio.preprocessing import SpeechDetector, pcm16_to_float
+from .audio.speaker import ME, OTHER, UNKNOWN, SpeakerResult, SpeakerVerifier
 from .audio.voice_emotion import VoiceEmotionClassifier, VoiceResult
 from .config import Settings, resolve_path
 from .fusion.fusion import LateFusion, ProsodyBaseline
-from .fusion.states import StateMapper, load_rules
+from .fusion.states import StateMapper, StateStabilizer, load_rules
 from .fusion.sync import synchronize
 from .decision import build_decisions
 from .decision.base import Decision, DecisionModule, StateVector
@@ -26,6 +27,19 @@ from .video.smoothing import EmotionSmoother
 logger = logging.getLogger("negotiation")
 AUDIO_QUEUE_SIZE = 3
 STATE_LOG_INTERVAL_MS = 1000
+SPEAKER_NAMES = {ME: "Я", OTHER: "Співрозмовник", UNKNOWN: "Невідомий мовець"}
+
+
+@dataclass
+class Turn:
+    ts: int
+    speaker: str
+    text: str
+    similarity: float | None = None
+
+
+def format_dialogue(turns: list[Turn]) -> str:
+    return "\n".join(f"{SPEAKER_NAMES[t.speaker]}: {t.text}" for t in turns)
 
 
 @dataclass
@@ -34,6 +48,7 @@ class Models:
     executor: ThreadPoolExecutor
     voice: VoiceEmotionClassifier | None = None
     asr: SpeechRecognizer | None = None
+    speaker: SpeakerVerifier | None = None
     audio_executor: ThreadPoolExecutor = field(default_factory=lambda: ThreadPoolExecutor(1, "audio"))
     asr_executor: ThreadPoolExecutor = field(default_factory=lambda: ThreadPoolExecutor(1, "asr"))
     decisions: dict[str, DecisionModule] = field(default_factory=dict)
@@ -57,18 +72,29 @@ def load_models(settings: Settings) -> Models:
     if asr.enabled:
         models.asr = SpeechRecognizer(asr.model, asr.language, asr.device, asr.compute_type, asr.beam_size)
         models.asr_executor.submit(models.asr.warm_up).result()
+    if settings.speaker.enabled:
+        s = settings.speaker
+        models.speaker = SpeakerVerifier(s.source, resolve_path(s.savedir), resolve_path(s.profile_path), s.device,
+                                         s.threshold, s.min_speech_s)
+        models.audio_executor.submit(models.speaker.warm_up).result()
     models.decisions = models.decision_executor.submit(build_decisions, settings).result()
     return models
 
 
 class Pipeline:
-    def __init__(self, mode: Mode, settings: Settings, models: Models, log: Callable[..., None]):
+    def __init__(self, mode: Mode, settings: Settings, models: Models, log: Callable[..., None],
+                 context: str = ""):
         self.mode = mode
+        self.context = context.strip()
         self.settings = settings
         self.models = models
         self.log = log
         decision = settings.decision
-        self.policy = HintPolicy(decision.min_interval_s, decision.stable_s, decision.min_confidence)
+        self.policy = HintPolicy(decision.min_interval_s, decision.stable_s, decision.min_confidence,
+                                 decision.speech_min_interval_s)
+        self.dialogue: deque[Turn] = deque(maxlen=50)
+        self._pending_phrase: Turn | None = None
+        self._last_speaker = UNKNOWN
         self.history: deque[Decision] = deque(maxlen=decision.history_size)
         self._logged_state: str | None = None
         self._logged_state_ms = 0
@@ -77,7 +103,8 @@ class Pipeline:
         self.voice_smoother = EmotionSmoother(settings.audio.smoothing_window_s)
         audio = settings.audio
         self.speech_detector = SpeechDetector(audio.vad_aggressiveness, audio.vad_frame_ms, audio.min_rms_db,
-                                              denoise=audio.denoise)
+                                              denoise=audio.denoise, target_level_db=audio.target_level_db,
+                                              max_gain_db=audio.max_gain_db, noise_margin_db=audio.noise_margin_db)
         self.utterances = UtteranceBuffer(settings.asr.min_pause_s, settings.asr.max_utterance_s)
         self.frames = 0
         self.frames_analyzed = 0
@@ -87,10 +114,10 @@ class Pipeline:
         self.fusion = LateFusion(fusion.emotion_weights, fusion.valence_weights, rules["emotion_dimensions"],
                                  fusion.prosody_arousal_weight)
         self.state_mapper = StateMapper(rules)
+        self.stabilizer = StateStabilizer(fusion.state_switch_margin)
         self.baseline = ProsodyBaseline(fusion.baseline_history, fusion.baseline_min_samples)
         self.prosody_z: dict[str, float] = {}
         self.prosody_ts: int | None = None
-        self.transcripts: list[Transcript] = []
         self._pending_frame: tuple[np.ndarray, int, int] | None = None
         self._frame_ready = asyncio.Event()
         self._audio_queue: asyncio.Queue = asyncio.Queue(maxsize=AUDIO_QUEUE_SIZE)
@@ -148,20 +175,26 @@ class Pipeline:
     def _analyze_audio(self, samples: np.ndarray, sample_rate: int, ts: int):
         segment = self.speech_detector.process(pcm16_to_float(samples, sample_rate))
         features = voice_features(segment)
-        if self.models.voice is None:
-            return segment, features, VoiceResult(ts, None)
-        voice = self.models.voice.predict(segment.speech_span(self.settings.audio.speech_padding_s), ts)
-        return segment, features, voice
+        speech = segment.speech_span(self.settings.audio.speech_padding_s)
+        verifier = self.models.speaker
+        speaker = verifier.identify(segment.speech_audio()) if verifier else SpeakerResult(UNKNOWN)
+        if speaker.label == UNKNOWN and segment.has_speech and verifier is not None and verifier.enrolled:
+            speaker = SpeakerResult(self._last_speaker)
+        if self.models.voice is None or speaker.label == ME:
+            return segment, features, VoiceResult(ts, None), speaker
+        return segment, features, self.models.voice.predict(speech, ts), speaker
 
     async def _audio_loop(self) -> None:
         loop = asyncio.get_running_loop()
         while True:
             samples, sample_rate, ts, recv_ms = await self._audio_queue.get()
             started = now_ms()
-            segment, features, voice = await loop.run_in_executor(
+            segment, features, voice, speaker = await loop.run_in_executor(
                 self.models.audio_executor, self._analyze_audio, samples, sample_rate, ts)
+            if segment.has_speech:
+                self._last_speaker = speaker.label
             self.voice_smoother.add(voice)
-            if "f0_mean_hz" in features:
+            if "f0_mean_hz" in features and speaker.label != ME:
                 self.prosody_z = self.baseline.zscores(features)
                 self.prosody_ts = ts
                 self.baseline.update(features)
@@ -169,6 +202,8 @@ class Pipeline:
             self.log(
                 "voice",
                 chunk_ts=ts,
+                speaker=speaker.label if segment.has_speech else None,
+                similarity=speaker.similarity,
                 features={k: v for k, v in features.items() if k != "mfcc"},
                 probs=dict(zip(EMOTIONS, np.round(voice.probs, 4).tolist())) if voice.probs is not None else None,
                 unknown=round(voice.unknown, 4),
@@ -183,26 +218,34 @@ class Pipeline:
                     self._tasks.append(task)
                     task.add_done_callback(lambda t: t in self._tasks and self._tasks.remove(t))
 
+    def _transcribe_and_identify(self, audio: np.ndarray, ts: int) -> tuple[Transcript, SpeakerResult]:
+        transcript = self.models.asr.transcribe(audio, ts)
+        speaker = self.models.speaker.identify(audio) if self.models.speaker else SpeakerResult(UNKNOWN)
+        return transcript, speaker
+
     async def _transcribe(self, audio: np.ndarray, ts: int, recv_ms: int) -> None:
         loop = asyncio.get_running_loop()
-        transcript = await loop.run_in_executor(self.models.asr_executor, self.models.asr.transcribe, audio, ts)
+        transcript, speaker = await loop.run_in_executor(self.models.asr_executor, self._transcribe_and_identify,
+                                                         audio, ts)
         if transcript.text:
-            self.transcripts.append(transcript)
-            self._last_data_ms = recv_ms
-        self.log("transcript", utterance_ts=ts, text=transcript.text, duration_s=transcript.duration_s,
+            turn = Turn(ts=ts, speaker=speaker.label, text=transcript.text, similarity=speaker.similarity)
+            self.dialogue.append(turn)
+            if speaker.label != ME:
+                self._pending_phrase = turn
+                self._last_data_ms = recv_ms
+        self.log("transcript", utterance_ts=ts, text=transcript.text, speaker=speaker.label,
+                 similarity=speaker.similarity, duration_s=transcript.duration_s,
                  processing_ms=round(transcript.processing_ms, 1))
 
     def current_state(self):
-        max_age_ms = int(self.settings.fusion.max_age_s * 1000)
-        latest = self.transcripts[-1] if self.transcripts else None
         observation = synchronize(self.face_smoother.current(), self.voice_smoother.current(), self.prosody_z,
-                                  self.prosody_ts, latest.text if latest else "", self.settings.fusion.max_age_s)
+                                  self.prosody_ts, "", self.settings.fusion.max_age_s)
         if observation is None:
             return None, None
-        if latest is not None and latest.ts < observation.ts - max_age_ms:
-            observation.transcript = ""
         fused = self.fusion.fuse(observation, observation.prosody)
-        return observation, self.state_mapper.map(fused) if fused is not None else None
+        if fused is None:
+            return observation, None
+        return observation, self.stabilizer.update(self.state_mapper.map(fused))
 
     def _log_state(self, state, now: int) -> None:
         if state.name == self._logged_state and now - self._logged_state_ms < STATE_LOG_INTERVAL_MS:
@@ -225,17 +268,25 @@ class Pipeline:
         vector = StateVector(name=state.name, degrees=state.degrees, confidence=state.confidence,
                              valence=state.fused.valence, arousal=state.fused.arousal,
                              hesitation=state.fused.hesitation)
-        if not self.policy.should_hint(vector, now):
+        phrase = self._pending_phrase
+        if phrase is not None and self.policy.should_hint_on_speech(vector, now):
+            self._pending_phrase = None
+            trigger = "speech"
+        elif self.policy.should_hint(vector, now):
+            trigger = "state"
+        else:
             return None
         data_ms = self._last_data_ms
+        dialogue = format_dialogue(list(self.dialogue)[-self.settings.decision.dialogue_turns:])
         module = self.models.decisions[self.mode]
         loop = asyncio.get_running_loop()
         decision = await loop.run_in_executor(self.models.decision_executor, module.decide, vector,
-                                              state.fused.prosody_z, observation.transcript, list(self.history))
+                                              state.fused.prosody_z, dialogue, list(self.history), self.context)
         self.history.append(decision)
         sent = now_ms()
-        hint = build_hint(decision, vector, self.mode, sent, sent - data_ms)
+        heard = phrase.text if trigger == "speech" else ""
+        hint = build_hint(decision, vector, self.mode, sent, sent - data_ms, trigger, heard)
         self.log("hint", state=vector.name, confidence=hint.confidence, reply=decision.reply, tone=decision.tone,
-                 strategy=decision.strategy, source=decision.source, details=decision.details,
-                 transcript=observation.transcript, decision_ms=sent - now, latency_ms=hint.latency_ms)
+                 strategy=decision.strategy, source=decision.source, details=decision.details, trigger=trigger,
+                 heard=heard, dialogue=dialogue, decision_ms=sent - now, latency_ms=hint.latency_ms)
         return hint
