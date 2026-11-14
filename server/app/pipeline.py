@@ -10,9 +10,12 @@ from .audio.asr import SpeechRecognizer, Transcript, UtteranceBuffer
 from .audio.features import voice_features
 from .audio.preprocessing import SpeechDetector, pcm16_to_float
 from .audio.voice_emotion import VoiceEmotionClassifier, VoiceResult
-from .config import Settings
+from .config import Settings, resolve_path
+from .fusion.fusion import LateFusion, ProsodyBaseline
+from .fusion.states import StateMapper, load_rules
+from .fusion.sync import synchronize
 from .protocol import Hint, Mode, now_ms
-from .video.face_emotion import EMOTIONS, EMOTIONS_UK, FaceEmotionRecognizer
+from .video.face_emotion import EMOTIONS, FaceEmotionRecognizer
 from .video.preprocessing import FrameSampler, prepare_frame
 from .video.smoothing import EmotionSmoother
 
@@ -67,7 +70,14 @@ class Pipeline:
         self.frames = 0
         self.frames_analyzed = 0
         self.audio_seconds = 0.0
-        self.voice_features: dict = {}
+        fusion = settings.fusion
+        rules = load_rules(resolve_path(fusion.rules_path))
+        self.fusion = LateFusion(fusion.emotion_weights, fusion.valence_weights, rules["emotion_dimensions"],
+                                 fusion.prosody_arousal_weight)
+        self.state_mapper = StateMapper(rules)
+        self.baseline = ProsodyBaseline(fusion.baseline_history, fusion.baseline_min_samples)
+        self.prosody_z: dict[str, float] = {}
+        self.prosody_ts: int | None = None
         self.transcripts: list[Transcript] = []
         self._pending_frame: tuple[np.ndarray, int, int] | None = None
         self._frame_ready = asyncio.Event()
@@ -140,8 +150,10 @@ class Pipeline:
             segment, features, voice = await loop.run_in_executor(
                 self.models.audio_executor, self._analyze_audio, samples, sample_rate, ts)
             self.voice_smoother.add(voice)
-            if segment.has_speech:
-                self.voice_features = features
+            if "f0_mean_hz" in features:
+                self.prosody_z = self.baseline.zscores(features)
+                self.prosody_ts = ts
+                self.baseline.update(features)
             self._last_data_ms = recv_ms
             self.log(
                 "voice",
@@ -169,29 +181,38 @@ class Pipeline:
         self.log("transcript", utterance_ts=ts, text=transcript.text, duration_s=transcript.duration_s,
                  processing_ms=round(transcript.processing_ms, 1))
 
+    def current_state(self):
+        max_age_ms = int(self.settings.fusion.max_age_s * 1000)
+        latest = self.transcripts[-1] if self.transcripts else None
+        observation = synchronize(self.face_smoother.current(), self.voice_smoother.current(), self.prosody_z,
+                                  self.prosody_ts, latest.text if latest else "", self.settings.fusion.max_age_s)
+        if observation is None:
+            return None, None
+        if latest is not None and latest.ts < observation.ts - max_age_ms:
+            observation.transcript = ""
+        fused = self.fusion.fuse(observation, observation.prosody)
+        return observation, self.state_mapper.map(fused) if fused is not None else None
+
     def poll(self) -> Hint | None:
         now = now_ms()
         if self._last_data_ms is None or now - self._last_hint_ms < self.min_interval_ms:
             return None
-        face = self.face_smoother.current()
-        voice = self.voice_smoother.current()
-        parts = []
-        if face is not None:
-            parts.append(f"обличчя: {EMOTIONS_UK[face.dominant]} {face.probs.max():.2f}")
-        if voice is not None:
-            parts.append(f"голос: {EMOTIONS_UK[voice.dominant]} {voice.probs.max():.2f}")
-        if self.transcripts:
-            parts.append(f"«{self.transcripts[-1].text}»")
-        main = face or voice
-        hint = Hint(
-            ts=now,
-            state=EMOTIONS_UK[main.dominant] if main else "немає даних",
-            confidence=float(main.probs.max()) if main else 0.0,
-            reply="; ".join(parts) or "Направте камеру на співрозмовника і говоріть.",
-            tone="—",
-            mode=self.mode,
-            latency_ms=now - self._last_data_ms,
-        )
+        observation, state = self.current_state()
+        if state is None:
+            hint = Hint(ts=now, state="немає даних", confidence=0.0, tone="—", mode=self.mode,
+                        reply="Направте камеру на співрозмовника і говоріть.", latency_ms=now - self._last_data_ms)
+        else:
+            fused = state.fused
+            top = sorted(state.degrees.items(), key=lambda kv: kv[1], reverse=True)[:3]
+            reply = ", ".join(f"{name} {degree:.2f}" for name, degree in top)
+            if observation.transcript:
+                reply += f"; «{observation.transcript}»"
+            hint = Hint(ts=now, state=state.name, confidence=state.confidence, reply=reply, tone="—",
+                        mode=self.mode, latency_ms=now - self._last_data_ms)
+            self.log("state", state=state.name, degrees=state.degrees, confidence=state.confidence,
+                     emotions=fused.as_dict(), valence=round(fused.valence, 3), arousal=round(fused.arousal, 3),
+                     hesitation=round(fused.hesitation, 3), modalities=fused.modalities,
+                     prosody_z={k: round(v, 2) for k, v in fused.prosody_z.items()})
         self._last_hint_ms = now
         self._last_data_ms = None
         return hint

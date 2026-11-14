@@ -1,0 +1,43 @@
+# Mapping of recognized emotions and voice signals to negotiation states.
+# Described in docs/states.md. Every number here affects the results.
+
+# Position of each basic emotion on the circumplex model (Russell, 1980):
+# valence -1 (unpleasant) .. 1 (pleasant), arousal 0 (calm) .. 1 (excited).
+emotion_dimensions:
+  angry:    {valence: -0.8, arousal: 0.9}
+  disgust:  {valence: -0.7, arousal: 0.6}
+  fear:     {valence: -0.6, arousal: 0.8}
+  happy:    {valence:  0.8, arousal: 0.7}
+  sad:      {valence: -0.6, arousal: 0.2}
+  surprise: {valence:  0.1, arousal: 0.8}
+  neutral:  {valence:  0.0, arousal: 0.3}
+
+# Score of a state = sum(weight * fused emotion probability) + sum(weight * signal).
+# Signals, all in 0..1:
+#   negativity   - negative part of fused valence
+#   positivity   - positive part of fused valence
+#   arousal_high - how much arousal exceeds the neutral level 0.5
+#   arousal_low  - how much arousal is below 0.5
+#   hesitation   - pauses above the speaker's own baseline
+# Scores are normalized to degrees that sum to 1; the state with the largest degree wins.
+states:
+  злість:
+    description: роздратування, ворожість, тиск на співрозмовника
+    emotions: {angry: 1.0, disgust: 0.6}
+    signals: {negativity: 0.3, arousal_high: 0.3}
+  напруга:
+    description: тривога, стрес, відчуття загрози або несподіванки
+    emotions: {fear: 1.0, surprise: 0.4, angry: 0.2}
+    signals: {arousal_high: 0.4, negativity: 0.2}
+  сумнів:
+    description: невпевненість, вагання, незгода без агресії
+    emotions: {sad: 0.6, fear: 0.3, neutral: 0.2}
+    signals: {hesitation: 0.6, arousal_low: 0.2}
+  згода:
+    description: позитивне ставлення, готовність погодитися
+    emotions: {happy: 1.0, neutral: 0.2}
+    signals: {positivity: 0.6}
+  нейтральний:
+    description: спокійний діловий стан без вираженої емоції
+    emotions: {neutral: 1.0}
+    signals: {arousal_low: 0.2}

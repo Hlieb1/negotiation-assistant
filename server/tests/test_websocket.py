@@ -43,7 +43,7 @@ def test_session_round_trip(tmp_path):
         ws.send_text(json.dumps({"type": "video_frame", "ts": 1, "jpeg_b64": jpeg_b64()}))
         hint = ws.receive_json()
         assert hint["type"] == "hint" and hint["mode"] == "llm" and hint["latency_ms"] >= 0
-        assert hint["state"] == "радість" and hint["confidence"] == 1.0
+        assert hint["state"] == "згода" and hint["confidence"] > 0.3
 
         pcm = base64.b64encode(np.zeros(32000, dtype="<i2").tobytes()).decode()
         ws.send_text(json.dumps({"type": "audio_chunk", "ts": 2, "pcm16_b64": pcm}))

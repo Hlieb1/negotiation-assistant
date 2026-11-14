@@ -41,6 +41,15 @@ asr:
   min_pause_s: 0.6           # pause that ends an utterance
   max_utterance_s: 10.0
 
+fusion:
+  emotion_weights: {face: 0.65, voice: 0.35}   # which emotion; face is more accurate (78 % vs 57 %)
+  valence_weights: {face: 0.4, voice: 0.6}     # negative/neutral/positive; voice reaches 87 %
+  prosody_arousal_weight: 0.5                  # share of arousal taken from pitch, loudness and tempo
+  max_age_s: 6.0                               # older modality data is ignored
+  baseline_history: 30                         # speech chunks kept for the speaker's own prosody baseline
+  baseline_min_samples: 3
+  rules_path: rules/state_rules.yaml
+
 storage:
   log_dir: logs
   record_media: false

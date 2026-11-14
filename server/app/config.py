@@ -61,6 +61,16 @@ class AsrSettings(BaseModel):
     max_utterance_s: float = 10.0
 
 
+class FusionSettings(BaseModel):
+    emotion_weights: dict[str, float] = {"face": 0.65, "voice": 0.35}
+    valence_weights: dict[str, float] = {"face": 0.4, "voice": 0.6}
+    prosody_arousal_weight: float = 0.5
+    max_age_s: float = 6.0
+    baseline_history: int = 30
+    baseline_min_samples: int = 3
+    rules_path: Path = Path("rules/state_rules.yaml")
+
+
 class StorageSettings(BaseModel):
     log_dir: Path = Path("logs")
     record_media: bool = False
@@ -73,6 +83,7 @@ class Settings(BaseModel):
     video: VideoSettings = VideoSettings()
     audio: AudioSettings = AudioSettings()
     asr: AsrSettings = AsrSettings()
+    fusion: FusionSettings = FusionSettings()
     storage: StorageSettings = StorageSettings()
 
 
