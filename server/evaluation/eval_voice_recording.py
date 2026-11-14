@@ -80,7 +80,8 @@ def main() -> None:
     for model in args.models:
         result = evaluate(samples, model, not args.no_denoise)
         name = model.split("/")[-1]
-        result.to_csv(out_dir / f"eval_{name}.csv", index=False)
+        suffix = "_nodenoise" if args.no_denoise else ""
+        result.to_csv(out_dir / f"eval_{name}{suffix}.csv", index=False)
         accuracy = (result.expected == result.predicted).mean()
         print(f"\n{name}: accuracy {accuracy:.2f}, median {result.processing_ms.median():.0f} ms")
         print(pd.crosstab(result.expected, result.predicted))
@@ -91,8 +92,9 @@ def main() -> None:
             "median_ms": round(result.processing_ms.median(), 1),
             **{f"acc_{e}": round((g.predicted == e).mean(), 3) for e, g in result.groupby("expected")},
         })
-    pd.DataFrame(summary).to_csv(out_dir / "eval_summary.csv", index=False)
-    print(f"\nЗбережено: {out_dir / 'eval_summary.csv'}")
+    summary_path = out_dir / f"eval_summary{suffix}.csv"
+    pd.DataFrame(summary).to_csv(summary_path, index=False)
+    print(f"\nЗбережено: {summary_path}")
 
 
 if __name__ == "__main__":
