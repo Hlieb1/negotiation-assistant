@@ -34,6 +34,15 @@ SCENARIO = [
 ]
 
 
+def wait_for_enter(prompt: str) -> None:
+    if sys.platform == "win32":
+        import msvcrt
+
+        while msvcrt.kbhit():
+            msvcrt.getwch()
+    input(prompt)
+
+
 def describe(features: dict, probs: np.ndarray | None) -> str:
     emotion = f"{EMOTIONS_UK[EMOTIONS[int(probs.argmax())]]} {probs.max():.2f}" if probs is not None else "—"
     if "f0_mean_hz" not in features:
@@ -74,7 +83,7 @@ def run_scenario(detector, classifier, asr, record_s: float, rounds: int) -> Non
             print(f"  Як говорити: {manner}")
             print(f"  Фраза: «{phrase}»")
             print("=" * 70)
-            input("Натисніть Enter, коли будете готові...")
+            wait_for_enter("Натисніть Enter, коли будете готові...")
             print(">>> ГОВОРІТЬ!  <<<")
             audio = sd.rec(int(record_s * SAMPLE_RATE), samplerate=SAMPLE_RATE, channels=1, dtype="float32")
             sd.wait()
