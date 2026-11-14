@@ -1,0 +1,44 @@
+# Fuzzy rule base of decision module A. Described in docs/decision.md.
+# Syntax: IF <input> IS <term> [AND|OR <input> IS <term> ...] THEN <output> IS <term>[, <output> IS <term> ...]
+# Inputs (degrees of negotiation states and confidence, 0..1):
+#   anger, tension, doubt, agreement, neutral: low | medium | high
+#   confidence: low | high | any (any has a constant membership of 0.2)
+# Outputs:
+#   calm, argue, clarify, close, pause (activation of a strategy): weak | strong
+#   tone: soft | neutral | firm
+
+# Base rule: every strategy has a small activation, the tone is neutral by default
+IF confidence IS any THEN calm IS weak, argue IS weak, clarify IS weak, close IS weak, pause IS weak, tone IS neutral
+
+# Anger: de-escalate first, never push for closing
+IF anger IS high THEN calm IS strong, tone IS soft
+IF anger IS medium AND confidence IS high THEN calm IS strong, tone IS soft
+IF anger IS high AND tension IS high THEN pause IS strong
+IF anger IS high OR tension IS high THEN close IS weak, argue IS weak
+
+# Tension: reassure, slow down
+IF tension IS high THEN calm IS strong, tone IS soft
+IF tension IS medium AND anger IS low THEN clarify IS strong
+IF tension IS high AND doubt IS high THEN pause IS strong
+
+# Doubt: find out the objection, then give arguments
+IF doubt IS high THEN clarify IS strong, tone IS neutral
+IF doubt IS medium AND agreement IS low AND tension IS low THEN argue IS strong
+IF doubt IS medium AND neutral IS medium THEN argue IS strong
+IF doubt IS medium AND tension IS medium THEN clarify IS strong
+IF doubt IS high THEN close IS weak
+
+# Agreement: fix the result
+IF agreement IS high THEN close IS strong, tone IS firm
+IF agreement IS medium AND doubt IS low THEN close IS strong
+IF agreement IS medium AND doubt IS medium THEN argue IS strong
+IF agreement IS high AND confidence IS high THEN tone IS firm
+IF agreement IS high THEN calm IS weak
+
+# Neutral: move the negotiation forward
+IF neutral IS high THEN argue IS strong, tone IS neutral
+IF neutral IS high AND confidence IS low THEN clarify IS strong
+IF anger IS low AND tension IS low AND doubt IS low AND agreement IS low THEN argue IS strong
+
+# Unreliable recognition: ask instead of asserting
+IF confidence IS low AND anger IS low AND tension IS low THEN clarify IS strong, tone IS neutral

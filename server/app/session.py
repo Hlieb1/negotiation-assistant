@@ -109,7 +109,6 @@ class Session:
     async def _hint_loop(self) -> None:
         while True:
             await asyncio.sleep(POLL_INTERVAL_S)
-            hint = self.pipeline.poll()
+            hint = await self.pipeline.next_hint()
             if hint is not None:
-                self.log.write("hint", **hint.model_dump(exclude={"type"}))
                 await self.send(hint)

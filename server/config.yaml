@@ -4,7 +4,6 @@ server:
 
 session:
   default_mode: fuzzy
-  hint_min_interval_s: 4.0
 
 video:
   enabled: true
@@ -49,6 +48,23 @@ fusion:
   baseline_history: 30                         # speech chunks kept for the speaker's own prosody baseline
   baseline_min_samples: 3
   rules_path: rules/state_rules.yaml
+
+decision:
+  fuzzy_rules_path: rules/fuzzy_rules.txt
+  replies_path: app/decision/replies_uk.json
+  min_interval_s: 4.0        # hints not more often than this
+  stable_s: 1.0              # a new state must hold this long before a hint
+  min_confidence: 0.1
+  history_size: 5            # previous hints passed to the module (no repeats)
+  llm:
+    enabled: true
+    base_url: http://127.0.0.1:11434
+    model: qwen3:8b          # or gemma3:4b if B is too slow
+    prompt_path: app/decision/llm_prompt_uk.json
+    timeout_s: 4.5           # after that the fuzzy reply is used
+    temperature: 0.6
+    max_tokens: 100
+    keep_alive: 60m
 
 storage:
   log_dir: logs

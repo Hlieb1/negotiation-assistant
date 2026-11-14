@@ -51,5 +51,8 @@ class StateMapper:
         total = sum(scores.values()) or 1.0
         degrees = {name: score / total for name, score in scores.items()}
         name = max(degrees, key=degrees.get)
+        uniform = 1.0 / len(degrees)
+        sharpness = (degrees[name] - uniform) / (1.0 - uniform)
+        confidence = sharpness * (0.6 + 0.4 * fused.coverage)
         return NegotiationState(name=name, degrees={k: round(v, 4) for k, v in degrees.items()},
-                                confidence=round(degrees[name] * fused.coverage, 4), fused=fused)
+                                confidence=round(confidence, 4), fused=fused)

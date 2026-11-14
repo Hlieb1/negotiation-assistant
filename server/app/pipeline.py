@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Callable
@@ -14,6 +15,9 @@ from .config import Settings, resolve_path
 from .fusion.fusion import LateFusion, ProsodyBaseline
 from .fusion.states import StateMapper, load_rules
 from .fusion.sync import synchronize
+from .decision import build_decisions
+from .decision.base import Decision, DecisionModule, StateVector
+from .hint import HintPolicy, build_hint
 from .protocol import Hint, Mode, now_ms
 from .video.face_emotion import EMOTIONS, FaceEmotionRecognizer
 from .video.preprocessing import FrameSampler, prepare_frame
@@ -21,6 +25,7 @@ from .video.smoothing import EmotionSmoother
 
 logger = logging.getLogger("negotiation")
 AUDIO_QUEUE_SIZE = 3
+STATE_LOG_INTERVAL_MS = 1000
 
 
 @dataclass
@@ -31,9 +36,11 @@ class Models:
     asr: SpeechRecognizer | None = None
     audio_executor: ThreadPoolExecutor = field(default_factory=lambda: ThreadPoolExecutor(1, "audio"))
     asr_executor: ThreadPoolExecutor = field(default_factory=lambda: ThreadPoolExecutor(1, "asr"))
+    decisions: dict[str, DecisionModule] = field(default_factory=dict)
+    decision_executor: ThreadPoolExecutor = field(default_factory=lambda: ThreadPoolExecutor(1, "decision"))
 
     def shutdown(self) -> None:
-        for executor in (self.executor, self.audio_executor, self.asr_executor):
+        for executor in (self.executor, self.audio_executor, self.asr_executor, self.decision_executor):
             executor.shutdown(wait=False, cancel_futures=True)
 
 
@@ -50,6 +57,7 @@ def load_models(settings: Settings) -> Models:
     if asr.enabled:
         models.asr = SpeechRecognizer(asr.model, asr.language, asr.device, asr.compute_type, asr.beam_size)
         models.asr_executor.submit(models.asr.warm_up).result()
+    models.decisions = models.decision_executor.submit(build_decisions, settings).result()
     return models
 
 
@@ -59,7 +67,11 @@ class Pipeline:
         self.settings = settings
         self.models = models
         self.log = log
-        self.min_interval_ms = int(settings.session.hint_min_interval_s * 1000)
+        decision = settings.decision
+        self.policy = HintPolicy(decision.min_interval_s, decision.stable_s, decision.min_confidence)
+        self.history: deque[Decision] = deque(maxlen=decision.history_size)
+        self._logged_state: str | None = None
+        self._logged_state_ms = 0
         self.sampler = FrameSampler(settings.video.max_fps)
         self.face_smoother = EmotionSmoother(settings.video.smoothing_window_s, settings.video.min_face_ratio)
         self.voice_smoother = EmotionSmoother(settings.audio.smoothing_window_s)
@@ -83,7 +95,6 @@ class Pipeline:
         self._frame_ready = asyncio.Event()
         self._audio_queue: asyncio.Queue = asyncio.Queue(maxsize=AUDIO_QUEUE_SIZE)
         self._last_data_ms: int | None = None
-        self._last_hint_ms = 0
         self._tasks: list[asyncio.Task] = []
 
     def start(self) -> None:
@@ -193,26 +204,38 @@ class Pipeline:
         fused = self.fusion.fuse(observation, observation.prosody)
         return observation, self.state_mapper.map(fused) if fused is not None else None
 
-    def poll(self) -> Hint | None:
+    def _log_state(self, state, now: int) -> None:
+        if state.name == self._logged_state and now - self._logged_state_ms < STATE_LOG_INTERVAL_MS:
+            return
+        self._logged_state, self._logged_state_ms = state.name, now
+        fused = state.fused
+        self.log("state", state=state.name, degrees=state.degrees, confidence=state.confidence,
+                 emotions=fused.as_dict(), valence=round(fused.valence, 3), arousal=round(fused.arousal, 3),
+                 hesitation=round(fused.hesitation, 3), modalities=fused.modalities,
+                 prosody_z={k: round(v, 2) for k, v in fused.prosody_z.items()})
+
+    async def next_hint(self) -> Hint | None:
         now = now_ms()
-        if self._last_data_ms is None or now - self._last_hint_ms < self.min_interval_ms:
+        if self._last_data_ms is None:
             return None
         observation, state = self.current_state()
         if state is None:
-            hint = Hint(ts=now, state="немає даних", confidence=0.0, tone="—", mode=self.mode,
-                        reply="Направте камеру на співрозмовника і говоріть.", latency_ms=now - self._last_data_ms)
-        else:
-            fused = state.fused
-            top = sorted(state.degrees.items(), key=lambda kv: kv[1], reverse=True)[:3]
-            reply = ", ".join(f"{name} {degree:.2f}" for name, degree in top)
-            if observation.transcript:
-                reply += f"; «{observation.transcript}»"
-            hint = Hint(ts=now, state=state.name, confidence=state.confidence, reply=reply, tone="—",
-                        mode=self.mode, latency_ms=now - self._last_data_ms)
-            self.log("state", state=state.name, degrees=state.degrees, confidence=state.confidence,
-                     emotions=fused.as_dict(), valence=round(fused.valence, 3), arousal=round(fused.arousal, 3),
-                     hesitation=round(fused.hesitation, 3), modalities=fused.modalities,
-                     prosody_z={k: round(v, 2) for k, v in fused.prosody_z.items()})
-        self._last_hint_ms = now
-        self._last_data_ms = None
+            return None
+        self._log_state(state, now)
+        vector = StateVector(name=state.name, degrees=state.degrees, confidence=state.confidence,
+                             valence=state.fused.valence, arousal=state.fused.arousal,
+                             hesitation=state.fused.hesitation)
+        if not self.policy.should_hint(vector, now):
+            return None
+        data_ms = self._last_data_ms
+        module = self.models.decisions[self.mode]
+        loop = asyncio.get_running_loop()
+        decision = await loop.run_in_executor(self.models.decision_executor, module.decide, vector,
+                                              state.fused.prosody_z, observation.transcript, list(self.history))
+        self.history.append(decision)
+        sent = now_ms()
+        hint = build_hint(decision, vector, self.mode, sent, sent - data_ms)
+        self.log("hint", state=vector.name, confidence=hint.confidence, reply=decision.reply, tone=decision.tone,
+                 strategy=decision.strategy, source=decision.source, details=decision.details,
+                 transcript=observation.transcript, decision_ms=sent - now, latency_ms=hint.latency_ms)
         return hint

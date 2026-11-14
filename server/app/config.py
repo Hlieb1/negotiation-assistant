@@ -20,7 +20,6 @@ class ServerSettings(BaseModel):
 
 class SessionSettings(BaseModel):
     default_mode: Mode = "fuzzy"
-    hint_min_interval_s: float = 4.0
 
 
 class VideoSettings(BaseModel):
@@ -71,6 +70,27 @@ class FusionSettings(BaseModel):
     rules_path: Path = Path("rules/state_rules.yaml")
 
 
+class LLMSettings(BaseModel):
+    enabled: bool = True
+    base_url: str = "http://127.0.0.1:11434"
+    model: str = "qwen3:8b"
+    prompt_path: Path = Path("app/decision/llm_prompt_uk.json")
+    timeout_s: float = 4.5
+    temperature: float = 0.6
+    max_tokens: int = 100
+    keep_alive: str = "60m"
+
+
+class DecisionSettings(BaseModel):
+    fuzzy_rules_path: Path = Path("rules/fuzzy_rules.txt")
+    replies_path: Path = Path("app/decision/replies_uk.json")
+    min_interval_s: float = 4.0
+    stable_s: float = 1.0
+    min_confidence: float = 0.1
+    history_size: int = 5
+    llm: LLMSettings = LLMSettings()
+
+
 class StorageSettings(BaseModel):
     log_dir: Path = Path("logs")
     record_media: bool = False
@@ -84,6 +104,7 @@ class Settings(BaseModel):
     audio: AudioSettings = AudioSettings()
     asr: AsrSettings = AsrSettings()
     fusion: FusionSettings = FusionSettings()
+    decision: DecisionSettings = DecisionSettings()
     storage: StorageSettings = StorageSettings()
 
 
