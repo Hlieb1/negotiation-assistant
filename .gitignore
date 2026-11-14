@@ -25,3 +25,5 @@ android/.idea/
 .idea/
 .vscode/
 Thumbs.db
+android/.kotlin/
+android/app/release/
