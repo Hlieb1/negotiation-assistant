@@ -114,15 +114,18 @@ def main() -> None:
 
     settings = load_settings()
     audio = settings.audio
-    print("Завантаження моделей...")
+    started = time.perf_counter()
+    print("Завантаження моделі емоцій голосу (emotion2vec+, ~30–50 с)...", flush=True)
     detector = SpeechDetector(audio.vad_aggressiveness, audio.vad_frame_ms, audio.min_rms_db, denoise=audio.denoise)
     classifier = VoiceEmotionClassifier(audio.voice_model, audio.voice_device, audio.min_speech_s)
     classifier.warm_up()
     asr = None
     if not args.no_asr:
+        print("Завантаження розпізнавання мовлення (whisper)...", flush=True)
         s = settings.asr
         asr = SpeechRecognizer(s.model, s.language, s.device, s.compute_type, s.beam_size)
         asr.warm_up()
+    print(f"Готово за {time.perf_counter() - started:.0f} с.")
     try:
         if args.scenario:
             run_scenario(detector, classifier, asr, args.record_s, args.rounds)
